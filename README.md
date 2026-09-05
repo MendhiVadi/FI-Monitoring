@@ -67,6 +67,46 @@ hallucinated facts. No black-box verdicts. Just fast, defensible answers to
 
 ---
 
+## 📱 Also on Android
+
+Forest Watch isn't just a website — it's shipped as a native-feeling Android
+app via Capacitor, so field workers and officers can carry the same map,
+ticket feed, and reporting flow in their pocket, no browser required.
+
+---
+
+## 🔐 Security, taken seriously from day one
+
+This isn't bolted-on security — it shaped how the system was built:
+
+- **Fail-closed officer access** — the officer portal isn't just
+  login-gated, it's allow-list gated. A signed-in account with no matching
+  `officers/{uid}` Firestore record is refused, and if the allow-list itself
+  can't be read, access fails closed rather than open.
+- **Server-enforced, not just client-enforced** — every access rule (who can
+  read an officer record, who can write a ticket) is duplicated in Firestore
+  security rules, so the real gate is on the server — the frontend check is
+  only ever for UX, never the actual line of defense.
+- **Officer accounts can't be self-granted** — `officers/{uid}` documents can
+  only ever be written by a trusted Admin SDK script, never by a client. No
+  amount of poking the frontend can turn a regular account into a staff one.
+- **CAPTCHA-verified staff login** — a canvas-rendered, per-session CAPTCHA
+  gate sits in front of every officer authentication attempt.
+- **HMAC-verified inbound webhooks** — WhatsApp webhook payloads are verified
+  with a timing-safe SHA-256 HMAC comparison against the app secret before
+  being trusted, closing off payload-spoofing.
+- **Per-reporter rate limiting** — dispute submissions are capped per phone
+  number in a rolling 24-hour window via a Firestore transaction, so one
+  number can't flood the tickets dashboard.
+- **Tickets are read-only from the client** — every ticket is written only
+  by trusted Cloud Functions using the Admin SDK; a client can read but can
+  never write or tamper with a ticket directly.
+- **Secrets never touch source control** — WhatsApp and Firebase credentials
+  are held in Firebase Secret Manager, injected at runtime, never hardcoded
+  or committed.
+
+---
+
 ## 🚧 Roadmap — what's next
 
 We're building toward a full closed-loop grievance system. Two pieces are
