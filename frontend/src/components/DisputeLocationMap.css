@@ -1,0 +1,15 @@
+.dispute-location { margin: 1.5rem 0; }
+.dispute-location h2 { font-size: 1.3rem; }
+.dispute-location p, .dispute-location small { line-height: 1.6; }
+.dispute-location-map { height: 380px; width: 100%; border-radius: 12px; z-index: 0; background: #d8e2dd; }
+.dispute-map-search { display: flex; gap: .75rem; align-items: end; margin: 1rem 0; }
+.dispute-map-search label { flex: 1; }
+.dispute-location input, .dispute-location select { display: block; box-sizing: border-box; width: 100%; padding: .65rem; background: #071126; color: white; border: 1px solid #677381; border-radius: 8px; font: inherit; }
+.dispute-location button { padding: .65rem 1rem; background: #195739; border: 1px solid #71b991; color: white; border-radius: 8px; cursor: pointer; font: inherit; }
+.dispute-location button:disabled { opacity: .5; cursor: wait; }
+.dispute-map-legend { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1rem 0; font-size: .85rem; }
+.dispute-map-legend span { display: flex; align-items: center; gap: .35rem; }
+.dispute-map-legend i { width: 16px; height: 16px; border: 2px solid; opacity: .8; border-radius: 4px; }
+.dispute-map-pin span { display: block; width: 24px; height: 24px; background: #1d4ed8; border: 3px solid white; border-radius: 50%; box-shadow: 0 1px 8px #0009; }
+.dispute-location details { margin-top: 1rem; padding: 1rem; border: 1px solid #526156; border-radius: 10px; }
+.dispute-location summary { cursor: pointer; }

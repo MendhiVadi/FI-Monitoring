@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow-list of officer accounts. Only the Admin SDK (Cloud
+    // Functions / console, which bypasses rules) may create or modify
+    // entries — a client can never grant itself officer access by writing
+    // its own doc here.
+    match /officers/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Ticket status is public so reporters can track their own dispute at
+    // /tickets without signing in. They are written only by the trusted
+    // Cloud Function (Admin SDK, bypasses rules) — clients can never write
+    // directly, which would let anyone forge or tamper with tickets.
+    match /tickets/{ticketId} {
+      allow read: if true;
+      allow write: if false;
+    }
+  }
+}

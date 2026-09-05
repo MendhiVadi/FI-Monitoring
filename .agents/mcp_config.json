@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "vestige": {
+      "command": "cmd.exe",
+      "args": ["/c", "C:\\Users\\medha\\AppData\\Roaming\\npm\\vestige-mcp.cmd"],
+      "env": {
+        "VESTIGE_DATA_DIR": "C:\\Users\\medha\\Desktop\\Hackathon Project\\.vestige-fresh"
+      }
+    }
+  }
+}

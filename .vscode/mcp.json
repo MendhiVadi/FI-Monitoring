@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "vestige": {
+      "type": "stdio",
+      "command": "C:\\Users\\medha\\AppData\\Roaming\\npm\\vestige-mcp.cmd",
+      "args": [],
+      "env": {
+        "VESTIGE_DATA_DIR": "C:\\Users\\medha\\Desktop\\Hackathon Project\\.vestige"
+      }
+    }
+  }
+}
