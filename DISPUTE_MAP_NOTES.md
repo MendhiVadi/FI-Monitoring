@@ -1,17 +1,30 @@
-# Dispute map and restored OTP verification
+# Dispute map and OTP verification
 
-Phone verification was restored on 2026-09-05. The frontend switch is
-`frontend/dispute-settings.json` (`otpRequired: true`). The callable function
-uses `DISPUTE_OTP_REQUIRED` with a secure default of `true`. Deploy the backend
-before the rebuilt frontend so an unverified form can never reach a permissive
-function. Firebase Phone Auth must remain enabled.
+**Superseded 2026-09-07.** Phone verification no longer uses Firebase Phone
+Auth. Dispute intake now runs a custom database-backed OTP (`functions/src/features/otp/service.ts`,
+collection `disputeOtps`) that issues, hashes and expires its own codes and
+never creates a Firebase Auth session. Firebase Phone Auth can be left disabled.
 
-Deployment on 2026-09-05 used `firebase.dispute-deploy.json` and the isolated
-`functions/.dispute-deploy` package. The full package's unrelated WhatsApp
-declarations require secrets which are not configured. The isolated package
-exports only `submitDispute`; its `.env.tree-top-d61c6` now explicitly sets
-`DISPUTE_OTP_REQUIRED=true`. Regenerate its compiled files after source changes.
-Do not deploy a stale isolated package.
+The frontend switch is still `frontend/dispute-settings.json` (`otpRequired: true`)
+and the callable still reads `DISPUTE_OTP_REQUIRED`, defaulting to `true`. Deploy
+the backend before the rebuilt frontend so an unverified form can never reach a
+permissive function.
+
+Verification is bound to the client that passed it: `verifyDisputeOtp` returns a
+one-time `verificationToken` and `submitDispute` requires it back. Knowing a
+phone number is not sufficient to submit on its behalf.
+
+`firebase.dispute-deploy.json` and the isolated `functions/.dispute-deploy`
+package were **removed on 2026-09-07**. They predated the OTP rewrite, exported
+only `submitDispute`, and deploying them would have reverted the verification
+flow and pruned the other live functions. Deploy from the root `firebase.json`.
+The stale `functions/.dispute-deploy/` directory may still exist locally and is
+safe to delete.
+
+Required secrets: `DISPUTE_OTP_SECRET` (OTP/token HMAC), `WHATSAPP_ACCESS_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, and
+`WHATSAPP_APP_SECRET` (webhook `X-Hub-Signature-256` verification). Sending the
+OTP needs an approved WhatsApp template named `otp_code` with one body parameter.
 
 Unverified submissions are explicitly marked `phoneVerified: false`, have no
 WhatsApp updates, and retain a five-per-day limit using a hash of the request IP.
@@ -50,6 +63,10 @@ Backend regression checks: build `functions`, then run
 in-memory Firestore test double and do not write live reports.
 
 ## Verification and deployment
+
+Note: the 2026-09-05 checks below predate the OTP rewrite and describe a form
+that opened *without* OTP. They are kept as a deployment record, not as a
+description of current behaviour.
 
 On 2026-09-05 both builds passed, targeted map/form lint passed, and the backend
 regression checks passed. Browser checks verified coordinate entry, invalid

@@ -1,4 +1,5 @@
 {
+  "buildCommand": "node scripts/generate-india-geojson.mjs && tsc -b && vite build",
   "functions": { "api/maps.js": { "maxDuration": 60 } },
   "routes": [{ "handle": "filesystem" }, { "src": "/.*", "dest": "/index.html" }]
 }

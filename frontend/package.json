@@ -4,15 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/generate-india-geojson.mjs",
+    "predev": "node ../scripts/sync-contracts.mjs && node scripts/generate-india-geojson.mjs",
     "dev": "vite",
-    "build": "node scripts/generate-india-geojson.mjs && tsc -b && vite build",
+    "build": "node ../scripts/sync-contracts.mjs && node scripts/generate-india-geojson.mjs && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "deploy": "vercel --prod",
     "android:sync": "npm run build && cap sync android",
     "android:open": "npm run android:sync && cap open android",
-    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug"
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "test": "node --test scripts/test-map-api.mjs tests/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",

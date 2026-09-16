@@ -3,21 +3,28 @@
   "private": true,
   "type": "commonjs",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node ../scripts/sync-contracts.mjs && tsc",
+    "gcp-build": "tsc",
     "watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test": "npm run build && node --test tests/*.cjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-forestwatch \"node --test --test-concurrency=1 tests/test-firestore-rules.mjs tests/test-transactions.mjs\"",
+    "test:all": "npm run test && npm run test:rules"
   },
   "dependencies": {
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/node": "^22.20.2",
+    "firebase": "^12.18.0",
     "typescript": "^5.6.3"
   }
 }

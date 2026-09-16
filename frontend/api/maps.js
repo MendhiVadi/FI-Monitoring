@@ -1,7 +1,7 @@
 import osmtogeojson from 'osmtogeojson';
 
 const BHUVAN = 'https://bhuvan-ras2.nrsc.gov.in/cgi-bin/LULC250K.exe';
-const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
+const GEOCODE = process.env.MAP_GEOCODE_URL || 'https://us-central1-tree-top-d61c6.cloudfunctions.net/geocodePlace';
 const AGENT = 'ForestWatch/1.0 (https://forest-watch-eight.vercel.app; land-use map)';
 const cache = new Map();
 const inFlight = new Map();
@@ -26,13 +26,18 @@ async function landUse(bounds, fetcher) {
         method: 'POST', headers: { 'User-Agent': AGENT, Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ data: query }), signal: AbortSignal.timeout(22000),
       });
-      if (!response.ok) continue;
+      if (!response.ok) { console.warn('Overpass endpoint returned %s: %s', response.status, endpoint); continue; }
       const data = await response.json();
-      if (data.remark || !Array.isArray(data.elements)) continue;
+      if (data.remark || !Array.isArray(data.elements)) { console.warn('Overpass rejected the query at %s: %s', endpoint, data.remark || 'no elements'); continue; }
       const geojson = osmtogeojson(data);
       geojson.features = geojson.features.filter((f) => ['Polygon', 'MultiPolygon'].includes(f.geometry.type));
       return { body: JSON.stringify(geojson), type: 'application/geo+json', ttl: 900 };
-    } catch { /* Retry through the second published Overpass provider. */ }
+    } catch (error) {
+      // Retry through the second published Overpass provider, but do not
+      // swallow the reason — a silent fallback hides an outage until both
+      // providers are down and the whole map goes dark with no explanation.
+      console.warn('Overpass endpoint %s failed: %s', endpoint, error.message);
+    }
   }
   throw new Error('Land-use providers are busy. Please try again shortly.');
 }
@@ -42,14 +47,13 @@ export async function getMapResponse(params, fetcher = fetch) {
   if (action === 'geocode') {
     const query = (params.get('q') || '').trim();
     if (query.length < 2 || query.length > 120) badRequest('Enter a place name to search.');
-    const upstream = new URL(NOMINATIM);
-    upstream.search = new URLSearchParams({ q: query, format: 'jsonv2', countrycodes: 'in', limit: '1' });
-    const response = await fetcher(upstream, { headers: { 'User-Agent': AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error('Place search is temporarily unavailable.');
-    const places = await response.json();
-    if (!Array.isArray(places) || !places.length) return { body: JSON.stringify({}), type: 'application/json', ttl: 300 };
-    const place = places[0];
-    return { body: JSON.stringify({ latitude: Number(place.lat), longitude: Number(place.lon), displayName: place.display_name }), type: 'application/json', ttl: 3600 };
+    const upstream = new URL(GEOCODE);
+    if (upstream.protocol !== 'https:') throw new Error('Configure an HTTPS geocoding endpoint.');
+    upstream.search = new URLSearchParams({ q: query.replace(/\s+/g, ' ') });
+    const response = await fetcher(upstream, { headers: { 'User-Agent': AGENT, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    if (!response.ok) { const error = new Error('Place search is temporarily unavailable.'); error.status = response.status === 429 ? 429 : 503; throw error; }
+    const place = await response.json();
+    return { body: JSON.stringify(place), type: 'application/json', ttl: 3600 };
   }
   if (action === 'landuse') {
     // Overpass order is south, west, north, east.
@@ -82,16 +86,77 @@ export async function getMapResponse(params, fetcher = fetch) {
   return { body, type: request === 'getmap' ? 'image/png' : 'application/xml', ttl: 86400 };
 }
 
+// This endpoint calls Overpass, Nominatim and Bhuvan under a single shared
+// User-Agent. Left open, it is a free public proxy to all three, and their
+// abuse policies attribute that traffic to this project. Bounded per source
+// address; the counter is per warm instance, which is coarse but enough to
+// stop one client saturating the shared quota.
+const RATE_WINDOW_MS = 60_000;
+const RATE_MAX = 120;
+const hits = new Map();
+
+function overRateLimit(ip) {
+  const now = Date.now();
+  const entry = hits.get(ip);
+  if (!entry || entry.start < now - RATE_WINDOW_MS) {
+    hits.set(ip, { start: now, count: 1 });
+    if (hits.size > 5000) for (const [k, v] of hits) if (v.start < now - RATE_WINDOW_MS) hits.delete(k);
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > RATE_MAX;
+}
+
+const ALLOWED_ORIGINS = new Set([
+  'https://forest-watch-eight.vercel.app',
+  'https://tree-top-d61c6.web.app',
+  'https://tree-top-d61c6.firebaseapp.com',
+  // Capacitor serves the Android WebView from https://localhost (see
+  // androidScheme in frontend/capacitor.config.ts), and apiUrl.ts points that
+  // build at the Vercel origin — so the app is a genuine cross-origin caller
+  // and omitting this silently breaks every map request inside the app.
+  'https://localhost',
+  'capacitor://localhost',
+  'http://localhost:5173',
+  'http://localhost:4173',
+]);
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  // Echo only known origins instead of "*", so a page on someone else's site
+  // cannot call this proxy from a visitor's browser.
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); res.statusCode = 405; return res.end(); }
+
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  if (overRateLimit(ip)) {
+    res.statusCode = 429;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Retry-After', '60');
+    return res.end(JSON.stringify({ error: 'Too many map requests. Please slow down.' }));
+  }
   const params = new URL(req.url, 'https://forest-watch-eight.vercel.app').searchParams;
   // Leaflet uses uppercase WMS names; normalize to one form before validation.
+  const lowered = new URLSearchParams();
+  for (const [key, value] of params) lowered.set(key.toLowerCase(), value);
+  // Rebuild from only the parameters this handler actually reads, in a fixed
+  // order. Keying the cache on the raw query string instead would let anyone
+  // append an ignored throwaway parameter (`&x=1`, `&x=2`, …) to miss the
+  // cache on every request and drive an unbounded number of live calls to
+  // Overpass, Nominatim and Bhuvan under this project's User-Agent.
   const normalized = new URLSearchParams();
-  for (const [key, value] of params) normalized.set(key.toLowerCase(), value);
+  const action = lowered.get('action');
+  const names = action === 'geocode' ? ['action', 'q'] : action === 'landuse' ? ['action', 'bbox'] : ['action', 'bbox', 'request', 'layers', 'width', 'height'];
+  for (const name of names) {
+    if (lowered.has(name)) normalized.set(name, lowered.get(name));
+  }
   const key = normalized.toString();
   try {
     let result = cache.get(key);

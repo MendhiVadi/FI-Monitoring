@@ -1,3 +1,15 @@
+# Developer quick start
+
+Application code is grouped by feature in `frontend/src/features` and
+`functions/src/features`. Start with [the project map](docs/ARCHITECTURE.md),
+[debugging guide](docs/DEBUGGING.md), and [organization plan](docs/REORGANIZATION_PLAN.md).
+
+From this folder, run `npm run dev` to start the frontend, or `npm run check:all`
+to run architecture, lint, builds, backend tests and Firestore rules tests.
+See the debugging guide for dependencies and live-service boundaries.
+
+---
+
 # 🌲 Forest Watch
 ### *Every claim. Every acre. Every anomaly — seen.*
 
@@ -60,7 +72,7 @@ hallucinated facts. No black-box verdicts. Just fast, defensible answers to
 |---|---|
 | Frontend | React 19 + TypeScript + Vite, React Three Fiber (the globe), GSAP scroll choreography |
 | Maps | Leaflet, OpenStreetMap land-use overlays, Bhuvan/NRSC WMS integration |
-| Backend | Firebase Cloud Functions (Node 20), Firestore |
+| Backend | Firebase Cloud Functions (Node 22), Firestore |
 | Messaging | WhatsApp Cloud API — automated ticket-status notifications |
 | Auth | Firebase Auth with a server-side officer allow-list enforced in Firestore security rules |
 | Mobile | Capacitor-wrapped Android build |

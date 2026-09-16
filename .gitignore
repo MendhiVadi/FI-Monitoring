@@ -1,6 +1,10 @@
 node_modules/
 dist/
-lib/
+# The compiled Cloud Functions output only. This must stay anchored: a bare
+# "lib/" matches any directory of that name at any depth, which silently kept
+# all of frontend/src/lib (Firebase setup, auth helpers, the ticket decision
+# tree) out of version control.
+/functions/lib/
 .env
 .env.*
 .env.local
@@ -10,6 +14,7 @@ firestore-debug.log
 *.local
 .vestige/
 .vestige-fresh/
+.vestige*/
 .codex/
 Read-Only-Folder/
 functions/.dispute-deploy/

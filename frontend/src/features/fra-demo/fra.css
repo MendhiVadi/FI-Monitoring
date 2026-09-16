@@ -1,0 +1,33 @@
+.fra-page { max-width: 1240px; margin: auto; padding: 7rem 1.25rem 4rem; color: #e2e8f0; }
+.fra-page h1 { margin: 1rem 0; font-size: clamp(1.7rem, 4vw, 2.8rem); letter-spacing: -.04em; }
+.fra-page h2 { margin-top: 0; font-size: 1.25rem; }
+.fra-page p { line-height: 1.6; }
+.fra-page a { color: #86efac; }
+.fra-tag { color: #86efac; font-size: .72rem; letter-spacing: .09em; }
+.fra-intro { color: #94a3b8; max-width: 680px; }
+.fra-notice { padding: 1rem; background: #15241e; border: 1px solid #2f5541; border-radius: 10px; line-height: 1.6; font-size: .86rem; }
+.fra-filters { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: 1.5rem 0; align-items: end; }
+.fra-page label { display: grid; gap: .5rem; font-size: .85rem; }
+.fra-page select, .fra-page input { padding: .6rem; border: 1px solid #475569; border-radius: 6px; background: #0f1d2d; color: #f8fafc; }
+.fra-page .fra-check { display: flex; align-items: center; padding: .6rem 0; }
+.fra-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.4rem 0; }
+.fra-metrics article { background: #102132; border: 1px solid #263a4e; padding: 1.1rem; border-radius: 10px; }
+.fra-metrics span { display: block; color: #a4b6c9; font-size: .8rem; }
+.fra-metrics strong { display: block; margin-top: .4rem; font-size: 2rem; color: #bbf7d0; }
+.fra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+.fra-card { min-width: 0; background: #0c1928; padding: 1.2rem; border: 1px solid #273548; border-radius: 12px; margin-bottom: 1.2rem; }
+.fra-map { height: 370px; width: 100%; border-radius: 8px; z-index: 0; background: #172b3a; }
+.fra-legend { display: flex; gap: .8rem; flex-wrap: wrap; margin: 1rem 0; font-size: .73rem; }
+.fra-legend i { display: inline-block; width: .75rem; height: .75rem; margin-right: .3rem; border: 1px solid #94a3b8; }
+.fra-table { overflow-x: auto; margin: 1rem 0; }
+.fra-table table { width: 100%; border-collapse: collapse; text-align: left; font-size: .8rem; }
+.fra-table td, .fra-table th { padding: .85rem .6rem; border-bottom: 1px solid #2b3b4e; vertical-align: top; }
+.fra-table th { color: #cad9e9; font-weight: 600; }
+.fra-page small { display: block; color: #a8b7c7; font-size: .72rem; margin-top: .4rem; font-weight: 400; overflow-wrap: anywhere; }
+.fra-page button { color: #86efac; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; font: inherit; }
+.fra-page button:focus-visible, .fra-page a:focus-visible { outline: 2px solid #86efac; outline-offset: 4px; }
+.fra-alert { border-left: 3px solid #d97706; padding-left: .7rem; margin-bottom: 1rem; min-width: 240px; }
+.fra-alert > strong { color: #fcd34d; }
+.fra-alert p { margin: .3rem 0; }
+@media (max-width: 900px) { .fra-grid { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .fra-metrics { grid-template-columns: repeat(2, 1fr); } .fra-page { padding-top: 7rem; } .fra-map { height: 300px; } }

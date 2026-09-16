@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getMapResponse, parseBounds } from '../api/maps.js';
 
+test('place search uses the shared gateway and propagates busy responses', async () => {
+  const params = new URLSearchParams({action:'geocode',q:' Pune   Maharashtra '});
+  const result = await getMapResponse(params, async url => {
+    assert.equal(url.hostname,'us-central1-tree-top-d61c6.cloudfunctions.net');
+    assert.equal(url.searchParams.get('q'),'Pune Maharashtra');
+    return Response.json({latitude:18.52,longitude:73.85,displayName:'Synthetic Pune'});
+  });
+  assert.equal(JSON.parse(result.body).latitude,18.52);
+  await assert.rejects(getMapResponse(params,async()=>new Response('',{status:429})),{status:429});
+});
+
 test('map bounds reject injection, reversed coordinates and oversized areas', () => {
   for (const input of ['0,0,1,1;out;', '2,0,1,1', '0,0,1,1', 'NaN,0,1,1']) {
     assert.throws(() => parseBounds(input, 0.12));

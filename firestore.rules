@@ -2,6 +2,19 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // An officer is an account with an entry in the `officers` allow-list.
+    // That collection is Admin-SDK-only (see below), so this cannot be
+    // self-granted from a client.
+    function isOfficer() {
+      return request.auth != null
+        && request.auth.token.auth_time is int
+        && request.auth.token.auth_time > 0
+        && timestamp.value(request.auth.token.auth_time * 1000) <= request.time + duration.value(60, 's')
+        && request.time < timestamp.value(request.auth.token.auth_time * 1000) + duration.value(8, 'h')
+        && exists(/databases/$(database)/documents/officers/$(request.auth.uid));
+    }
+
     // Allow-list of officer accounts. Only the Admin SDK (Cloud
     // Functions / console, which bypasses rules) may create or modify
     // entries — a client can never grant itself officer access by writing
@@ -11,13 +24,56 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Ticket status is public so reporters can track their own dispute at
-    // /tickets without signing in. They are written only by the trusted
-    // Cloud Function (Admin SDK, bypasses rules) — clients can never write
-    // directly, which would let anyone forge or tamper with tickets.
-    match /tickets/{ticketId} {
-      allow read: if true;
+    match /tickets/{ticketId}/notes/{noteId} {
+      allow read: if isOfficer();
       allow write: if false;
+    }
+    match /tickets/{ticketId}/events/{eventId} {
+      allow read: if isOfficer();
+      allow write: if false;
+    }
+
+    // A dispute ticket is not public data. The document holds the reporter's
+    // name and phone number, the named opposing party, a free-text account of
+    // the dispute, and the precise coordinates of the disputed land. Firestore
+    // cannot hide individual fields, so a rule broad enough to expose "just the
+    // status" would expose all of that too — reads are officers only.
+    //
+    // There is deliberately no "reporter reads their own ticket" branch. Since
+    // dispute intake moved off Firebase Phone Auth, a reporter has no auth
+    // session at all and `reporterUid` is a synthetic "phone-"/"guest-" hash,
+    // never an auth uid — such a branch could never match, and leaving it in
+    // implied a self-service read path that does not exist.
+    match /tickets/{ticketId} {
+      allow read: if isOfficer();
+
+      // Every write goes through a trusted Cloud Function on the Admin SDK,
+      // which bypasses these rules: `submitDispute` creates tickets, and
+      // `updateTicketStatus` / `addTicketNote` re-check the officer allow-list
+      // server-side before changing status or appending a note. So no client
+      // needs write access here, and none is granted — that keeps the reporter's
+      // identity, the dispute record and the audit trail unforgeable.
+      allow write: if false;
+    }
+
+    // Server-only collections, all reached exclusively by Cloud Functions on
+    // the Admin SDK (which bypasses these rules). Denying everything here means
+    // a client can never read an OTP hash, flip its own `verified`/`used` flag,
+    // reset a rate-limit counter, or enumerate reporters' phone numbers.
+    match /disputeOtps/{phone} {
+      allow read, write: if false;
+    }
+    match /otpSendLimits/{ipHash} {
+      allow read, write: if false;
+    }
+    match /reporterLimits/{uid} {
+      allow read, write: if false;
+    }
+    match /reporters/{uid} {
+      allow read, write: if false;
+    }
+    match /whatsappDeliveries/{eventId} {
+      allow read, write: if false;
     }
   }
 }
