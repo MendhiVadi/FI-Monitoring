@@ -3,7 +3,9 @@
 Updated 16 September 2026 in the canonical Land Dispute checkout. The user authorized
 fixes after the read-only audit. This list groups findings by root cause and includes
 problems found while checking the fixes. Existing unrelated work is preserved.
-The changes are local; nothing has been deployed.
+The changes were published to GitHub and Vercel production on 16 September 2026,
+with all 11 Firebase Functions and the Firestore rules deployed. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for exact release identifiers and live checks.
 
 ## Implemented fixes
 
@@ -87,10 +89,10 @@ final root check log is `.codex/review/check-all.log` (local verification artifa
   records missing Meta permission/template approval for `otp_code`. That external
   state was not rechecked by sending a message. Live delivery needs account access,
   approval and an intentional recipient test; local success does not prove it.
-- **Deployment compatibility:** deploy the new Functions exports, Firestore rules
-  and frontend as a coordinated release. Old open clients use incompatible
-  submission/edit contracts and will need to reload and verify again. Recheck the
-  hosting API origin and the actual deployed flow.
+- **Deployment compatibility:** the Functions, rules and Vercel frontend were
+  released together. Old open clients use incompatible submission/edit contracts
+  and need to reload and verify again. Public routing and place search passed live
+  checks; authenticated case editing was tested locally, not against real cases.
 - **History and retention:** legacy embedded notes are preserved; old actions cannot
   gain historical authors/reasons retroactively. The UI shows the latest 50 events
   and loads notes in pages of 50; printing includes loaded notes, with a warning when
@@ -103,8 +105,9 @@ final root check log is `.codex/review/check-all.log` (local verification artifa
 - **Data boundaries:** selected coordinates are range-checked, not proven to fall
   inside the named administrative polygon. Demo boundaries date to 2021 and cover
   only three districts; they are not cadastral or ownership evidence.
-- **Remaining checks:** live hosting, real CAPTCHA/password recovery/email delivery,
-  physical printing and Android release behavior were not verified. This is not a
+- **Remaining checks:** real CAPTCHA/password recovery/email delivery, real OTP and
+  authenticated case editing, physical printing and Android were not verified in
+  production. Live hosting and public route/access checks passed. This is not a
   claim that every possible software flaw has been eliminated.
 - **Non-fatal diagnostics:** seven lint warnings remain around effect state/ref
   synchronization, plus large lazy globe/Firebase bundle warnings.

@@ -1,5 +1,15 @@
 # OTP and ticket notifications
 
+## September 16 release update
+
+The review fixes are deployed; see `DEPLOYMENT.md`. Verification grants now live
+separately from replacement OTP challenges. Notification sends require explicit
+opt-in, and uncertain outcomes are not blindly retried. Signed delivery receipts
+are persisted with monotonic states, and STOP preferences are retained and applied
+to older cases. These changes supersede the retry/receipt behavior described in
+the historical September 15 notes below. No live OTP was sent in this release;
+the previously recorded Meta account/template issue has not been revalidated.
+
 ## September 15 repair
 
 - The production OTP endpoint had no public Cloud Run invoker binding. Anonymous

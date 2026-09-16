@@ -44,9 +44,10 @@ minimum acceptance criteria.
 
 ## Status
 
-**Local review fixes and FRA demonstration implemented as of 2026-09-16.**
+**Review fixes and FRA demonstration released on 2026-09-16.**
 See `docs/REVIEW_FIXES.md` for the issue list, verification and release limits.
-These source changes have not been deployed. Treat data handling, authentication
+The frontend, all 11 Functions and Firestore rules have been deployed; release
+evidence is in `docs/DEPLOYMENT.md`. Treat data handling, authentication
 and retention as production concerns. Synthetic data must never render as an
 official record or as a fallback in the staff registry.
 
@@ -98,15 +99,17 @@ state and map service state are closed to every client.
 
 - Live OTP requires the Meta account/template permission and approval described in
   `docs/OTP_WHATSAPP_OPERATIONS.md`; local tests intercept message sends.
-- Release the frontend, Functions (including the new exports) and Firestore rules
-  together. The old client and new submission/edit contracts are not interchangeable.
+- Old open browser tabs must reload for the new submission/edit contracts.
+  Keep frontend, Functions and Firestore rules coordinated in future releases.
 - The FRA demonstration covers Mandla, Pune and Koraput only. Nationwide current
   boundaries, official records, trends and optional LLM explanations remain future
   integration work. See `docs/FRA_DEMO.md` for schema and provenance.
 - Confirm the real service operator, support channel and case-retention policy
   before public launch. Temporary-state cleanup is implemented; case records have
   no automatic deletion period configured.
-- Complete live authentication/delivery, hosting and Android release checks.
+- Hosting, public routes, geocoding and signed-out access controls passed release
+  checks. Live signed-in workflows, OTP/message delivery and Android still need
+  their stated acceptance checks.
 
 ## Working rules for all AI tools
 
