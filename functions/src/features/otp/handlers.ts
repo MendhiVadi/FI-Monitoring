@@ -3,7 +3,11 @@ import { db } from "../../platform/firebase";
 import { DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } from "../../platform/secrets";
 import { sendWhatsAppTemplate, WhatsAppSendError } from "../whatsapp/client";
 import { normalizePhone, assertIpUnderSendLimit, issueOtp, confirmOtp, recordOtpDelivery, OtpRateLimitError } from "./service";
-import { hashId } from "./identity";
+import { addressBucket, hashId } from "./identity";
+
+// Cost ceiling for unauthenticated endpoints: a flood queues or is shed at
+// this many instances instead of scaling the bill without bound.
+const PUBLIC_MAX_INSTANCES = 10;
 
 // Sends a fresh, database-backed one-time code for dispute-intake phone
 // verification. This is deliberately not Firebase Auth phone sign-in: the
@@ -11,7 +15,8 @@ import { hashId } from "./identity";
 // verified phone is proven to `submitDispute` by looking up that record —
 // not by carrying a signed-in session.
 export const requestDisputeOtp = onCall(
-  { invoker: "public", secrets: [DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID] },
+  { invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 60,
+    secrets: [DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID] },
   async (request) => {
     let phone: string;
     try {
@@ -26,7 +31,7 @@ export const requestDisputeOtp = onCall(
     const address = request.rawRequest.ip;
     if (!address) throw new HttpsError("unavailable", "Please try again later.");
     try {
-      await assertIpUnderSendLimit(db, hashId(address));
+      await assertIpUnderSendLimit(db, hashId(addressBucket(address)));
     } catch (err) {
       // Deliberately a fixed message: the underlying error may carry Firestore
       // internals, and this endpoint is unauthenticated.
@@ -63,7 +68,8 @@ export const requestDisputeOtp = onCall(
   }
 );
 
-export const verifyDisputeOtp = onCall({ invoker: "public", secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
+export const verifyDisputeOtp = onCall({ invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 30,
+  secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   let phone: string;
   try {
     phone = normalizePhone(request.data?.phone);

@@ -1,4 +1,10 @@
 {
   "indexes": [],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    { "collectionGroup": "tickets", "fieldPath": "dispute.description", "indexes": [] },
+    { "collectionGroup": "tickets", "fieldPath": "dispute.evidenceReferences", "indexes": [] },
+    { "collectionGroup": "notes", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "events", "fieldPath": "reason", "indexes": [] },
+    { "collectionGroup": "geocodeCache", "fieldPath": "place", "indexes": [] }
+  ]
 }

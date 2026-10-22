@@ -9,15 +9,24 @@ export function hasValidMetaSignature(rawBody: Buffer | undefined, header: unkno
   const received = Buffer.from(header);
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
-export const whatsappWebhook = onRequest({ invoker: "public", region: "asia-south1", timeoutSeconds: 540,
+// Meta documents webhook payloads of up to 3 MB; anything larger is not from Meta.
+const MAX_WEBHOOK_BYTES = 3 * 1024 * 1024;
+function sameSecret(received: unknown, expected: string) {
+  if (typeof received !== "string" || !expected) return false;
+  const a = Buffer.from(received), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+export const whatsappWebhook = onRequest({ invoker: "public", region: "asia-south1", timeoutSeconds: 540, maxInstances: 10,
   secrets: [WHATSAPP_WEBHOOK_VERIFY_TOKEN, WHATSAPP_APP_SECRET, DISPUTE_OTP_SECRET] }, async (request, response) => {
   if (request.method === "GET") {
-    if (request.query["hub.mode"] === "subscribe" && request.query["hub.verify_token"] === WHATSAPP_WEBHOOK_VERIFY_TOKEN.value() &&
-        typeof request.query["hub.challenge"] === "string") response.status(200).send(request.query["hub.challenge"]);
+    const challenge = request.query["hub.challenge"];
+    if (request.query["hub.mode"] === "subscribe" && sameSecret(request.query["hub.verify_token"], WHATSAPP_WEBHOOK_VERIFY_TOKEN.value()) &&
+        typeof challenge === "string" && /^[\w-]{1,200}$/.test(challenge)) response.status(200).type("text/plain").send(challenge);
     else response.sendStatus(403);
     return;
   }
   if (request.method !== "POST") { response.set("Allow", "GET, POST").sendStatus(405); return; }
+  if ((request.rawBody?.length ?? 0) > MAX_WEBHOOK_BYTES) { response.sendStatus(413); return; }
   if (!hasValidMetaSignature(request.rawBody, request.get("x-hub-signature-256"), WHATSAPP_APP_SECRET.value())) { response.sendStatus(403); return; }
   const entries = Array.isArray(request.body?.entry) ? request.body.entry : [];
   try {

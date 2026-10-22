@@ -24,12 +24,20 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Collection reads must be paged (the portal asks for 50 at a time), so one
+    // session cannot pull a whole case history or registry in a single query.
+    function isPagedQuery() {
+      return request.query.limit is int && request.query.limit <= 100;
+    }
+
     match /tickets/{ticketId}/notes/{noteId} {
-      allow read: if isOfficer();
+      allow get: if isOfficer();
+      allow list: if isOfficer() && isPagedQuery();
       allow write: if false;
     }
     match /tickets/{ticketId}/events/{eventId} {
-      allow read: if isOfficer();
+      allow get: if isOfficer();
+      allow list: if isOfficer() && isPagedQuery();
       allow write: if false;
     }
 
@@ -45,7 +53,10 @@ service cloud.firestore {
     // never an auth uid — such a branch could never match, and leaving it in
     // implied a self-service read path that does not exist.
     match /tickets/{ticketId} {
-      allow read: if isOfficer();
+      // Registry browsing goes through `listTickets`, which projects away the
+      // narrative; direct queries are still capped to one page.
+      allow get: if isOfficer();
+      allow list: if isOfficer() && isPagedQuery();
 
       // Every write goes through a trusted Cloud Function on the Admin SDK,
       // which bypasses these rules: `submitDispute` creates tickets, and
@@ -73,6 +84,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /whatsappDeliveries/{eventId} {
+      allow read, write: if false;
+    }
+
+    // Deny by default: any collection not matched above (disputeVerifications,
+    // submissionReceipts, notificationPreferences, geocodeCache,
+    // mapServiceLimits, and anything added later) stays server-only.
+    match /{document=**} {
       allow read, write: if false;
     }
   }

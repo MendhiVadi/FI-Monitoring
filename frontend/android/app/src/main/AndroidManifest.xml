@@ -3,7 +3,10 @@
 
     <!-- Backups are disabled: the WebView keeps the signed-in officer's
          Firebase Auth session, and the portal renders citizen dispute
-         records. Neither should be extractable from a device backup. -->
+         records. Neither should be extractable from a device backup.
+         Cleartext HTTP stays off through targetSdk 36's default; do not set
+         usesCleartextTraffic here. `cap run -l` adds it only for live reload,
+         and an explicit value would fail that manifest merge. -->
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

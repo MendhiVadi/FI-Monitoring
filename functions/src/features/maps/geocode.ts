@@ -20,17 +20,21 @@ export async function releaseGeocodeSlot(owner: string, now = Date.now()) {
 }
 // All website/app instances share this reservation. No public Nominatim calls
 // are made by the Vercel process or browser.
-export const geocodePlace = onRequest({ invoker: "public", timeoutSeconds: 30 }, async (request, response) => {
+// The privacy policy promises place searches are cached for up to a day.
+const CACHE_TTL_MS = 86_400_000;
+// One upstream slot is shared globally, so extra instances only add idle cost.
+export const geocodePlace = onRequest({ invoker: "public", timeoutSeconds: 30, maxInstances: 5 }, async (request, response) => {
   if (request.method !== "GET") { response.set("Allow", "GET").sendStatus(405); return; }
+  response.set("Cache-Control", "no-store");
   const text = typeof request.query.q === "string" ? request.query.q.trim().replace(/\s+/g, " ") : "";
-  if (text.length < 2 || text.length > 120) { response.status(400).json({ error: "Enter a place name." }); return; }
+  if (text.length < 2 || text.length > 120 || /[\u0000-\u001f\u007f]/.test(text)) { response.status(400).json({ error: "Enter a place name." }); return; }
   const key = createHash("sha256").update(text.toLowerCase()).digest("hex");
   const ref = db.collection("geocodeCache").doc(key);
   const owner = randomUUID();
   let reserved = false;
   try {
     const cached = (await ref.get()).data();
-    if (cached && cached.expiresAt > Date.now()) { response.json(cached.place); return; }
+    if (cached && cached.expiresAt > Date.now()) { response.set("Cache-Control", "public, max-age=300").json(cached.place); return; }
     reserved = await reserveGeocodeSlot(Date.now(), owner);
     if (!reserved) {
       response.set("Retry-After", "2").status(429).json({ error: "Place search is busy. Please retry in a moment." }); return;
@@ -42,8 +46,8 @@ export const geocodePlace = onRequest({ invoker: "public", timeoutSeconds: 30 },
     const places = await upstream.json() as { lat: string; lon: string; display_name: string }[];
     const result = Array.isArray(places) ? places[0] : undefined;
     const place = result && Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon)) ?
-      { latitude: Number(result.lat), longitude: Number(result.lon), displayName: result.display_name } : {};
-    await ref.set({ place, expiresAt: Date.now() + 86_400_000 });
+      { latitude: Number(result.lat), longitude: Number(result.lon), displayName: String(result.display_name ?? "").slice(0, 300) } : {};
+    await ref.set({ place, expiresAt: Date.now() + CACHE_TTL_MS });
     response.set("Cache-Control", "public, max-age=300").json(place);
   } catch { response.status(503).json({ error: "Place search is temporarily unavailable." }); }
   finally { if (reserved) await releaseGeocodeSlot(owner).catch(() => undefined); }

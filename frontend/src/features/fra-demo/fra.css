@@ -8,8 +8,11 @@
 .fra-notice { padding: 1rem; background: #15241e; border: 1px solid #2f5541; border-radius: 10px; line-height: 1.6; font-size: .86rem; }
 .fra-filters { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: 1.5rem 0; align-items: end; }
 .fra-page label { display: grid; gap: .5rem; font-size: .85rem; }
-.fra-page select, .fra-page input { padding: .6rem; border: 1px solid #475569; border-radius: 6px; background: #0f1d2d; color: #f8fafc; }
-.fra-page .fra-check { display: flex; align-items: center; padding: .6rem 0; }
+/* 1rem controls: 44px touch targets, and iOS does not zoom in on focus. */
+.fra-page select, .fra-page input:not([type="checkbox"]) { min-height: 44px; padding: .55rem .6rem; border: 1px solid #475569; border-radius: 6px; background: #0f1d2d; color: #f8fafc; font: inherit; font-size: 1rem; }
+.fra-page select:focus-visible, .fra-page input:focus-visible { outline: 2px solid #86efac; outline-offset: 2px; }
+.fra-page .fra-check { display: flex; align-items: center; gap: .6rem; min-height: 44px; cursor: pointer; }
+.fra-check input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: #22c55e; }
 .fra-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.4rem 0; }
 .fra-metrics article { background: #102132; border: 1px solid #263a4e; padding: 1.1rem; border-radius: 10px; }
 .fra-metrics span { display: block; color: #a4b6c9; font-size: .8rem; }
@@ -26,8 +29,29 @@
 .fra-page small { display: block; color: #a8b7c7; font-size: .72rem; margin-top: .4rem; font-weight: 400; overflow-wrap: anywhere; }
 .fra-page button { color: #86efac; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; font: inherit; }
 .fra-page button:focus-visible, .fra-page a:focus-visible { outline: 2px solid #86efac; outline-offset: 4px; }
+/* State progress rows filter the page, so they read as links, not plain text. */
+.fra-page .fra-state-link { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: .2em; }
+.fra-page .fra-reset { min-height: 44px; padding: .55rem 1rem; border: 1px solid #475569; border-radius: 6px; color: #e2e8f0; text-align: center; }
+.fra-page .fra-reset:hover { border-color: #86efac; color: #86efac; }
+/* Status is spelled out in the pill; colour only reinforces it. */
+.fra-badge { display: inline-block; padding: .15rem .55rem; border: 1px solid; border-radius: 999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.fra-badge--pending { background: #172554; border-color: #3b82f6; color: #dbeafe; }
+.fra-badge--approved { background: #14532d; border-color: #22c55e; color: #dcfce7; }
+.fra-badge--rejected { background: #1e293b; border-color: #64748b; color: #e2e8f0; }
 .fra-alert { border-left: 3px solid #d97706; padding-left: .7rem; margin-bottom: 1rem; min-width: 240px; }
 .fra-alert > strong { color: #fcd34d; }
 .fra-alert p { margin: .3rem 0; }
 @media (max-width: 900px) { .fra-grid { grid-template-columns: 1fr; } }
+/* Phones: each table row becomes a labelled card, so nothing scrolls sideways. */
+@media (max-width: 640px) {
+  .fra-table--stack { overflow-x: visible; }
+  .fra-table--stack table, .fra-table--stack tbody, .fra-table--stack tr, .fra-table--stack th, .fra-table--stack td { display: block; }
+  .fra-table--stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .fra-table--stack tr { border: 1px solid #2b3b4e; border-radius: 10px; padding: .75rem .9rem; margin-bottom: .75rem; }
+  .fra-table--stack th, .fra-table--stack td { border-bottom: 0; padding: .4rem 0; }
+  .fra-table--stack td::before { content: attr(data-label); display: block; margin-bottom: .2rem; color: #a4b6c9; font-size: .72rem; font-weight: 600; }
+  .fra-table--stats tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1rem; }
+  .fra-table--stats th { grid-column: 1 / -1; }
+  .fra-alert { min-width: 0; }
+}
 @media (max-width: 520px) { .fra-metrics { grid-template-columns: repeat(2, 1fr); } .fra-page { padding-top: 7rem; } .fra-map { height: 300px; } }

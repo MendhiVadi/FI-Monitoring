@@ -16,7 +16,9 @@ function mutationId(value: unknown): string {
   }
   return value;
 }
-export const updateTicketStatus = onCall({ invoker: "public" }, async (request) => {
+// Each note notifies the reporter, so a per-case ceiling also bounds message volume.
+const MAX_NOTES_PER_TICKET = 500;
+export const updateTicketStatus = onCall({ invoker: "public", maxInstances: 10 }, async (request) => {
   const officer = await requireOfficer(request.auth);
   const ticketId = validTicketId(request.data?.ticketId), requestId = mutationId(request.data?.requestId);
   const status = request.data?.status;
@@ -43,7 +45,7 @@ export const updateTicketStatus = onCall({ invoker: "public" }, async (request) 
     return { ticketId, status, statusLabel, revision: revision + 1 };
   });
 });
-export const addTicketNote = onCall({ invoker: "public" }, async (request) => {
+export const addTicketNote = onCall({ invoker: "public", maxInstances: 10 }, async (request) => {
   const officer = await requireOfficer(request.auth);
   const ticketId = validTicketId(request.data?.ticketId), requestId = mutationId(request.data?.requestId);
   const note = typeof request.data?.note === "string" ? request.data.note.trim() : "";
@@ -57,6 +59,9 @@ export const addTicketNote = onCall({ invoker: "public" }, async (request) => {
       return { ticketId };
     }
     const at = admin.firestore.FieldValue.serverTimestamp(), data = ticket.data()!;
+    if ((Number(data.noteCount) || 0) >= MAX_NOTES_PER_TICKET) {
+      throw new HttpsError("resource-exhausted", "This case has reached its note limit. Record further detail in a status change.");
+    }
     const revision = (Number(data.revision) || 0) + 1;
     tx.create(noteRef, { text: note, officerUid: officer.uid, at });
     tx.create(ref.collection("events").doc(requestId), { kind: "note", noteId: requestId, officerUid: officer.uid, at, revision });

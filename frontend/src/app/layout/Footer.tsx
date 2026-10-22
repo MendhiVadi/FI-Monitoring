@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+import "./layout.css";
 
 const LINKS = [
   { to: "/privacy-policy", label: "Privacy Policy" },
@@ -11,29 +12,16 @@ const LINKS = [
 
 export function Footer() {
   return (
-    <footer
-      style={{
-        background: "#040a16",
-        color: "rgba(255,255,255,0.7)",
-        padding: "2.5rem 2rem",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "1.5rem",
-        justifyContent: "space-between",
-        alignItems: "center",
-      }}
-    >
-      <span>&copy; {new Date().getFullYear()} Forest Watch</span>
-      <nav style={{ display: "flex", flexWrap: "wrap", gap: "1.25rem" }}>
-        {LINKS.map((link) => (
-          <Link
-            key={link.to}
-            to={link.to}
-            style={{ color: "rgba(255,255,255,0.7)", textDecoration: "none", fontSize: "0.9rem" }}
-          >
-            {link.label}
-          </Link>
-        ))}
+    <footer className="site-footer">
+      <span>&copy; {new Date().getFullYear()} Land Dispute</span>
+      <nav className="site-footer__nav" aria-label="Legal and information">
+        <ul>
+          {LINKS.map((link) => (
+            <li key={link.to}>
+              <NavLink to={link.to}>{link.label}</NavLink>
+            </li>
+          ))}
+        </ul>
       </nav>
     </footer>
   );

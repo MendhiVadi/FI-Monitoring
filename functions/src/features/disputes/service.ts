@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import { HttpsError } from "firebase-functions/v2/https";
 import contract from "../../platform/contracts/dispute.json";
-import { hashId } from "../otp/identity";
+import { addressBucket, hashId } from "../otp/identity";
 import { verificationKey } from "../otp/service";
 
 export interface DisputeInput {
@@ -59,20 +59,23 @@ export async function submitDisputeTransaction(db: admin.firestore.Firestore, op
   // A receipt is addressed by the secret proof + client request ID, not by a guessable phone alone.
   const receipt = db.collection("submissionReceipts").doc(hashId("submission:" + (token || address) + ":" + submissionId));
   const grant = token ? db.collection("disputeVerifications").doc(verificationKey(token, secret)) : null;
+  const addressLimit = db.collection("reporterLimits").doc("ip-" + hashId(addressBucket(address)));
   const ticket = db.collection("tickets").doc();
   return db.runTransaction(async (tx) => {
-    const receiptSnap = await tx.get(receipt);
+    // One round trip for every document whose id is already known (a contended
+    // transaction repeats all of its reads); only the reporter quota id
+    // depends on the verification outcome.
+    const [receiptSnap, addressSnap, grantSnap] = await tx.getAll(...(grant ? [receipt, addressLimit, grant] : [receipt, addressLimit]));
     if (receiptSnap.exists && receiptSnap.data()!.expiresAt > Date.now()) {
       return { ticketId: receiptSnap.data()!.ticketId as string, replayed: true };
     }
-    const proof = grant ? (await tx.get(grant)).data() : undefined;
+    const proof = grantSnap?.data();
     const verified = Boolean(proof && !proof.used && proof.expiresAt > Date.now() && proof.phoneHash === hashId(phone));
     if (requireOtp && !verified) throw new HttpsError("unauthenticated", "Phone verification expired. Verify again; your draft is kept.");
     const uid = verified ? "phone-" + hashId(phone) : "guest-" + hashId(address);
     const limit = db.collection("reporterLimits").doc(uid);
     const previous = (await tx.get(limit)).data();
-    const addressLimit = db.collection("reporterLimits").doc("ip-" + hashId(address));
-    const previousAddress = (await tx.get(addressLimit)).data();
+    const previousAddress = addressSnap.data();
     const now = Date.now();
     const count = previous && previous.windowStartedAt > now - DAY_MS ? Number(previous.count) || 0 : 0;
     const addressCount = previousAddress && previousAddress.windowStartedAt > now - DAY_MS ? Number(previousAddress.count) || 0 : 0;

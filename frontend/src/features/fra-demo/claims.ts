@@ -4,6 +4,14 @@ export interface DemoClaim {
   claimedHa: number; recordedHa: number; evidenceRef: string;
 }
 export const REFERENCE_DATE = "2026-09-16";
+export const STATUS_LABEL: Record<ClaimStatus, string> = { pending: "Pending", approved: "Approved", rejected: "Rejected" };
+// Display form of a stored ISO calendar day, e.g. "14 Mar 2026". Pinned to UTC
+// because these are calendar days, not instants. Kept in this module (not a
+// shared helper) because the rule tests load this file on its own.
+export function formatDay(iso: string): string {
+  const time = Date.parse(iso + "T00:00:00Z");
+  return Number.isFinite(time) ? new Date(time).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }) : iso;
+}
 export const DISTRICTS = [
   { district: "Mandla", state: "Madhya Pradesh" },
   { district: "Pune", state: "Maharashtra" },
@@ -25,7 +33,7 @@ export function claimAnomalies(claim: DemoClaim, asOf = REFERENCE_DATE): Anomaly
   const filed = Date.parse(claim.filedOn + "T00:00:00Z"), now = Date.parse(asOf + "T00:00:00Z");
   const days = Math.floor((now - filed) / 86_400_000);
   if (!Number.isFinite(days) || days < 0) anomalies.push({ kind: "missing", explanation: "The filing date is missing, invalid or later than the review date.", action: "Check the filing register before assessing delay." });
-  else if (claim.status === "pending" && days > 90) anomalies.push({ kind: "delay", explanation: "Pending for " + days + " days as of " + asOf + ", beyond the demonstration threshold of 90 days.", action: "Check the movement register and record the reason for delay." });
+  else if (claim.status === "pending" && days > 90) anomalies.push({ kind: "delay", explanation: "Pending for " + days + " days as of " + formatDay(asOf) + ", beyond the demonstration threshold of 90 days.", action: "Check the movement register and record the reason for delay." });
   if (!Number.isFinite(claim.recordedHa) || claim.recordedHa <= 0 || !Number.isFinite(claim.claimedHa) || claim.claimedHa <= 0) {
     anomalies.push({ kind: "missing", explanation: "A positive claimed or recorded area is missing.", action: "Obtain the referenced land record before comparing areas." });
   } else {

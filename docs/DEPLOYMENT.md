@@ -1,6 +1,41 @@
 # Production deployment
 
-## Current release — 2026-09-16
+## Current frontend release — Land Dispute scroll refinement, 2026-09-16
+
+- Public site: https://forest-watch-eight.vercel.app (historical URL retained).
+- Vercel deployment: `dpl_9ENesfQpcqYBvQY6Up4frgZjXDT9`, READY, production.
+- Immutable URL: https://forest-watch-8romwn9zp-medhanshkhattar05-8450s-projects.vercel.app
+- Published directly from the canonical `frontend/` checkout, then promoted
+  after checking the production build. No new Git commit/push was made in this
+  task; the canonical checkout's existing changes remain intact.
+- Synchronized globe rotation/zoom, eliminated camera entry into the sphere and
+  the blank sticky screen, retained readable report/skip actions, and shortened
+  the mobile sequence. Visible web branding now reads Land Dispute.
+- `.vercelignore` excludes native Android builds, generated web output and local
+  files. The inspected upload contains about 2 MB of source/build inputs.
+- No Functions, Firestore rules/indexes, auth contracts or hosting resource names
+  changed in this release. Backend release details are recorded below.
+
+Verification: architecture, lint, frontend/backend production builds and all 16
+offline tests passed. The initial `check:all` stopped when the sandbox denied
+Firebase CLI's configuration read; rerunning `npm run test:rules` with access
+completed all 25 emulator tests successfully. Seven pre-existing lint warnings
+and large lazy-bundle warnings remain. Vercel's production build completed in 12s.
+
+Local browser checks covered forward/reverse scrolling, skip-intro focus and
+position, the report form and return navigation, 390px/320px responsive layouts,
+and reduced motion (no canvas or sticky sequence). Production browser inspection
+confirmed the globe and Land Dispute content render at the opening and former
+blank scroll point, with no error-level console entries during those checks.
+The public homepage serves `index-DfzF_0d5.js`; report, login, FRA-demo routes,
+the new scroll bundle/CSS and Earth texture return HTTP 200. Inspecting the public
+alias resolves to the deployment above.
+
+No new claim is made about physical touch-device performance, live OTP delivery,
+signed-in staff mutations or the Android build. Existing release limits below
+continue to apply. Refresh old browser tabs to load the new frontend.
+
+## Earlier full-stack release — 2026-09-16
 
 - Public site: https://forest-watch-eight.vercel.app
 - GitHub: https://github.com/MendhiVadi/FI-Monitoring, `master`.

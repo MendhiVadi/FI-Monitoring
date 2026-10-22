@@ -14,5 +14,5 @@ export function ServerClock() {
     return () => clearInterval(interval);
   }, []);
 
-  return <span>{now || "Secure Server Time"}</span>;
+  return <span>{now || "India Standard Time"}</span>;
 }

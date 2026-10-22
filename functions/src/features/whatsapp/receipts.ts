@@ -22,11 +22,16 @@ export async function stopNotifications(rawPhone: unknown, messageTime: unknown)
   if (!Number.isFinite(receivedTime) || receivedTime <= 0 || receivedTime > Date.now() + 60_000) return;
   let stoppedAt = receivedTime;
   const preference = db.collection("notificationPreferences").doc(hashId(phone));
-  await db.runTransaction(async tx => {
+  // expiresAt is only written once a sweep for the latest stoppedAt finishes, so a
+  // redelivered or older STOP can skip re-scanning every ticket for this phone.
+  const alreadySwept = await db.runTransaction(async tx => {
     const previous = (await tx.get(preference)).data();
+    if ((previous?.stoppedAt ?? 0) >= receivedTime && previous?.expiresAt) return true;
     stoppedAt = Math.max(receivedTime, previous?.stoppedAt ?? 0);
     tx.set(preference, { stoppedAt });
+    return false;
   });
+  if (alreadySwept) return;
   // Persist the opt-out on retained tickets so expiring the temporary preference
   // record never re-enables old reports. New explicit opt-ins remain independent.
   for (const field of ["notificationPhone", "waFrom"]) {

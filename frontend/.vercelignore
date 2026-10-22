@@ -1,0 +1,11 @@
+# Vercel rebuilds the web app from source. Native builds and local files are
+# unrelated to this deployment and must not be uploaded.
+android/
+dist/
+node_modules/
+.env*
+!.env.example
+tests/
+scripts/test-*
+*.log
+*.tsbuildinfo

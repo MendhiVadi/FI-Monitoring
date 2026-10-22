@@ -8,6 +8,8 @@ export const notifyWhatsAppOnTicketUpdate = onDocumentUpdated(
     document: "tickets/{ticketId}",
     region: "asia-south1",
     retry: true,
+    // Throttled events are redelivered (retry: true), so this only paces sends.
+    maxInstances: 10,
     secrets: [WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, DISPUTE_OTP_SECRET],
   },
   async (event) => {
@@ -19,7 +21,8 @@ export const notifyWhatsAppOnTicketUpdate = onDocumentUpdated(
     if (!statusChanged && !noteAdded) return;
     const phone = typeof after.notificationPhone === "string" ? after.notificationPhone : after.waFrom;
     const ticketId = event.params.ticketId;
-    if (typeof phone !== "string" || !phone || after.whatsappUpdates !== true) return;
+    // Mirror delivery's consent checks here so unverified tickets skip its transaction and delivery record.
+    if (typeof phone !== "string" || !phone || after.whatsappUpdates !== true || after.phoneVerified !== true) return;
     const status = String(after.status) as TicketStatus;
     if (!Object.prototype.hasOwnProperty.call(TICKET_STATUSES, status)) {
       console.error("Skipped WhatsApp update for unsupported status", { ticketId, status });

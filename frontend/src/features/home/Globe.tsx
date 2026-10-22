@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import {
@@ -10,8 +10,9 @@ import {
   SRGBColorSpace,
   Vector3,
   type Group,
+  type Texture,
 } from "three";
-import { localProgress } from "./scrollStore";
+import { localProgress, smoothstep } from "./scrollStore";
 import { latLonToSpherePosition, INDIA_LAT_LON } from "./geoSphere";
 
 interface GlobeProps {
@@ -20,19 +21,24 @@ interface GlobeProps {
 
 const AXIAL_TILT = (23.5 * Math.PI) / 180;
 const ROTATION_SPEED = 0.18; // rad/s while free-spinning, before the India lock begins
-const LOCK_START = 0.6; // local progress at which free-spin stops and the lock slerp begins
+const LOCK_START = 0.025;
+const LOCK_END = 0.65;
 const RADIUS = 2;
 const FORWARD = new Vector3(0, 0, 1); // toward the camera
 const NORTH = new Vector3(0, 1, 0);
 const UP_AXIS = new Vector3(0, 1, 0);
-// Clears the fixed translucent header bar, which otherwise sits over the
-// canvas and visually crops the globe's top.
-const VERTICAL_OFFSET = -0.35;
+// Lift the globe behind the heading while keeping the initial silhouette below
+// the fixed header. The portrait camera fit keeps it within narrow viewports.
+const VERTICAL_OFFSET = 0.4;
 
-// Smoothstep, used to ease the hand-off from free spin to India lock.
-function smoothstep(edge0: number, edge1: number, x: number) {
-  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
-  return t * t * (3 - 2 * t);
+// drei re-runs this callback whenever its identity changes, and each run flags
+// the texture for another GPU upload. A module-level function keeps it stable
+// across Globe re-renders (e.g. the hero scrolling in and out of view).
+function applyEarthColorSpace(texture: Texture | Texture[]) {
+  for (const t of Array.isArray(texture) ? texture : [texture]) {
+    t.colorSpace = SRGBColorSpace;
+    t.needsUpdate = true;
+  }
 }
 
 // Rotation that brings `indiaDir` (a point on the unit sphere, in the mesh's
@@ -57,7 +63,7 @@ function computeIndiaFacingQuat(indiaDir: Vector3): Quaternion {
 // tilt. It free-spins counter-clockwise, then — as scroll progresses through
 // the stage — hands off cleanly (no overlap between spin and lock, so the
 // axis never wobbles) into a locked orientation facing India toward the
-// camera, continuing into the India-zoom stage.
+// camera. A restrained zoom leaves the globe visible through the hand-off.
 export function Globe({ progressRef }: GlobeProps) {
   const groupRef = useRef<Group>(null);
   const orientRef = useRef<Group>(null);
@@ -71,13 +77,13 @@ export function Globe({ progressRef }: GlobeProps) {
   // texture to the GPU. Setting it in an effect ran after the first upload, so
   // it needed a needsUpdate flag to take effect and silently never did —
   // the earth rendered with linear-interpreted sRGB data (washed out).
-  const earthTexture = useTexture("/earth.jpg", (texture) => {
-    const loaded = Array.isArray(texture) ? texture : [texture];
-    loaded.forEach((t) => {
-      t.colorSpace = SRGBColorSpace;
-      t.needsUpdate = true;
-    });
-  });
+  const earthTexture = useTexture("/earth.jpg", applyEarthColorSpace);
+  // Phones and tablets spin at half rate: every other display frame is still
+  // smooth for a slow rotation, and halves the GPU work (and battery drain)
+  // while someone reads the hero without scrolling.
+  const [halfRateSpin] = useState(() => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
+  const spinFrameRequest = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(spinFrameRequest.current), []);
 
   const targetQuat = useMemo(() => {
     const [lat, lon] = INDIA_LAT_LON;
@@ -88,14 +94,27 @@ export function Globe({ progressRef }: GlobeProps) {
   // material opacities, and orientation are all set directly on the three.js
   // objects each frame, so scrubbing the scroll never triggers a React
   // re-render of this component.
-  useFrame((_, delta) => {
+  useFrame(({ invalidate }, delta) => {
     const local = localProgress(progressRef.current, "globe");
-    const lockT = smoothstep(LOCK_START, 1, local);
+    const lockT = smoothstep(LOCK_START, LOCK_END, local);
 
     if (lockT <= 0) {
+      // The canvas renders on demand; only the free spin needs a continuous
+      // loop. Once locked, frames come from scroll updates alone. At half rate
+      // the next frame is requested one display frame later, so the loop
+      // keeps going (the spin never stalls) without drawing every vsync.
+      if (halfRateSpin) {
+        cancelAnimationFrame(spinFrameRequest.current);
+        spinFrameRequest.current = requestAnimationFrame(() => invalidate());
+      } else {
+        invalidate();
+      }
       // Freely spinning: this is the only phase driven by real time, so the
       // globe reads as "alive" before the user starts scrolling toward India.
-      spinAngle.current -= delta * ROTATION_SPEED;
+      // Avoid a jump when the tab or offscreen renderer resumes after a pause.
+      // The half-rate cap is looser so a 30Hz-capped phone (15fps here)
+      // keeps the same spin speed instead of being clamped to 75%.
+      spinAngle.current -= Math.min(delta, halfRateSpin ? 0.1 : 0.05) * ROTATION_SPEED;
       frozenSpinQuat.current = null;
       outQuat.current.setFromAxisAngle(UP_AXIS, spinAngle.current);
     } else {
@@ -110,10 +129,10 @@ export function Globe({ progressRef }: GlobeProps) {
     }
     orientRef.current?.quaternion.copy(outQuat.current);
 
-    const scale = 1 - local * 0.15;
-    const opacity = 1 - smoothstep(0.75, 1, local);
+    const opacity = 1 - 0.55 * smoothstep(0.7, 1, local);
 
-    groupRef.current?.scale.setScalar(scale);
+    // Remove the opening axial tilt while locking, so India ends north-up.
+    if (groupRef.current) groupRef.current.rotation.z = AXIAL_TILT * (1 - lockT);
     if (sphereRef.current) {
       (sphereRef.current.material as MeshStandardMaterial).opacity = opacity;
     }

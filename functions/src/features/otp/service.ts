@@ -13,6 +13,7 @@ const VERIFIED_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const MAX_SENDS_PER_WINDOW = 5;
 const SEND_WINDOW_MS = 60 * 60 * 1000;
+const RESEND_COOLDOWN_MS = 30 * 1000;
 export class OtpRateLimitError extends Error {}
 
 function hashValue(scope: string, value: string, secret: string): string {
@@ -59,6 +60,16 @@ export async function issueOtp(
     if (sendsInWindow >= MAX_SENDS_PER_WINDOW) {
       throw new OtpRateLimitError("Too many codes requested for this number. Please try again later.");
     }
+    // A still-usable code sent moments ago means a double tap or an impatient
+    // retry: resending only bills another WhatsApp message and spends quota.
+    // Spent, exhausted, failed or expired codes can be replaced immediately.
+    const issuedAt = typeof data?.issuedAt === "number" ? data.issuedAt : 0;
+    const liveCode = Boolean(data) && !data?.verified && !data?.used && data?.deliveryStatus !== "failed" &&
+      !(typeof data?.attempts === "number" && data.attempts >= MAX_ATTEMPTS) &&
+      typeof data?.expiresAt === "number" && data.expiresAt > now;
+    if (liveCode && issuedAt > now - RESEND_COOLDOWN_MS) {
+      throw new OtpRateLimitError("A code was just sent to this number. Wait 30 seconds before requesting another.");
+    }
     let nextCode = generateCode();
     while (safeEqualHex(data?.codeHash, hashValue("code", `${phone}:${nextCode}`, secret))) {
       nextCode = generateCode();
@@ -66,6 +77,7 @@ export async function issueOtp(
     transaction.set(ref, {
       phone,
       codeHash: hashValue("code", `${phone}:${nextCode}`, secret),
+      issuedAt: now,
       expiresAt: now + OTP_TTL_MS,
       attempts: 0,
       verified: false,

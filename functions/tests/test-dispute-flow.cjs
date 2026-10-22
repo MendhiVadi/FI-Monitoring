@@ -47,3 +47,10 @@ test('WhatsApp payload correlates receipts and puts OTP in body and copy button'
     await assert.rejects(sendWhatsAppTemplate('+12025550123','request_created',[],'test','test'),/could not be confirmed/);
   } finally {global.fetch=original;}
 });
+test('per-address quotas group IPv6 callers by /64 and keep IPv4 exact', () => {
+  const { addressBucket } = require('../lib/features/otp/identity.js');
+  assert.equal(addressBucket('192.0.2.10'), '192.0.2.10');
+  assert.equal(addressBucket('::ffff:192.0.2.10'), '192.0.2.10');
+  assert.equal(addressBucket('2001:db8:0:0:abcd::2'), addressBucket('2001:0DB8::1'));
+  assert.notEqual(addressBucket('2001:db8:0:1::1'), addressBucket('2001:db8:0:2::1'));
+});

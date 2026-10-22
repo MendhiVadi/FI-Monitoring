@@ -13,6 +13,7 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
+    "demo:whatsapp": "node scripts/demo-whatsapp-test.js",
     "test": "npm run build && node --test tests/*.cjs",
     "test:rules": "firebase emulators:exec --only firestore --project demo-forestwatch \"node --test --test-concurrency=1 tests/test-firestore-rules.mjs tests/test-transactions.mjs\"",
     "test:all": "npm run test && npm run test:rules"

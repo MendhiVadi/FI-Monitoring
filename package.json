@@ -6,9 +6,11 @@
     "build": "npm run sync:contracts && npm --prefix frontend run build && npm --prefix functions run build",
     "lint": "npm --prefix frontend run lint",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
     "test": "npm --prefix functions test && npm --prefix frontend test",
     "test:rules": "npm --prefix functions run test:rules",
-    "check": "npm run check:architecture && npm run lint && npm run build && npm test",
+    "check": "npm run check:secrets && npm run check:architecture && npm run lint && npm run build && npm run check:bundle && npm test",
     "check:all": "npm run check && npm run test:rules",
     "sync:contracts": "node scripts/sync-contracts.mjs"
   }

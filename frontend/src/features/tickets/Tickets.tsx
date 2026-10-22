@@ -1,6 +1,6 @@
 import { useLiveTickets } from "./useLiveTickets";
 import { signOutStaff } from "../auth/staffSession";
-import { STATUS_LABELS, statusTone } from "./ticketStatus";
+import { StatusBadge } from "./StatusBadge";
 
 export function Tickets() {
   const { tickets, loading, error, hasMore, loadMore, refresh } = useLiveTickets();
@@ -26,7 +26,7 @@ export function Tickets() {
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
             <span style={{ fontSize: "1.2rem" }}>🛡️</span>
             <strong style={{ color: "#7bd89f", fontSize: "1.05rem" }}>
-              Comprehensive Officer Portal Available
+              Full staff portal available
             </strong>
           </div>
           <p style={{ color: "rgba(255,255,255,0.75)", fontSize: "0.88rem", margin: 0 }}>
@@ -49,7 +49,7 @@ export function Tickets() {
             boxShadow: "0 4px 14px rgba(16, 185, 129, 0.3)",
           }}
         >
-          <span>Open Full Officer Portal</span>
+          <span>Open staff portal</span>
           <span>→</span>
         </a>
       </div>
@@ -101,7 +101,7 @@ export function Tickets() {
               fontWeight: 600,
             }}
           >
-            Open the officer portal to search and review reports →
+            Open the staff portal to search and review reports →
           </a>
         </div>
       )}
@@ -116,24 +116,13 @@ export function Tickets() {
               padding: "1.2rem",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem" }}>
-              <strong style={{ fontSize: "1rem", color: "#f8fafc" }}>{t.subject}</strong>
-              <span
-                style={{
-                  textTransform: "uppercase",
-                  fontSize: "0.72rem",
-                  letterSpacing: "0.05em",
-                  fontWeight: 700,
-                  padding: "0.25rem 0.6rem",
-                  borderRadius: 20,
-                  ...statusTone(t.status),
-                }}
-              >
-                {STATUS_LABELS[t.status] ?? t.status}
-              </span>
+            {/* Wraps so the no-wrap long status badge cannot push a 360px screen sideways. */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem 1rem", flexWrap: "wrap" }}>
+              <strong style={{ fontSize: "1rem", color: "#f8fafc", overflowWrap: "anywhere", minWidth: 0 }}>{t.subject}</strong>
+              <StatusBadge status={t.status} long />
             </div>
             <div style={{ opacity: 0.6, fontSize: "0.85rem", marginTop: "0.5rem" }}>
-              From: {t.waFrom || "Web Submission"}
+              From: {t.waFrom || (t.source === "whatsapp-hotline" ? "WhatsApp hotline" : "Web form (no phone recorded)")}
             </div>
           </li>
         ))}

@@ -1,15 +1,34 @@
 .dispute-location { margin: 1.5rem 0; }
-.dispute-location h2 { font-size: 1.3rem; }
+/* Sits under the form's "Location of the land" legend, so it reads as a sub-heading. */
+.dispute-location h2 { font-size: 1.05rem; margin: 0 0 .25rem; }
+.dispute-location h3 { font-size: 1rem; margin: 1rem 0 .5rem; }
 .dispute-location p, .dispute-location small { line-height: 1.6; }
-.dispute-location-map { height: 380px; width: 100%; border-radius: 12px; z-index: 0; background: #d8e2dd; }
-.dispute-map-search { display: flex; gap: .75rem; align-items: end; margin: 1rem 0; }
-.dispute-map-search label { flex: 1; }
-.dispute-location input, .dispute-location select { display: block; box-sizing: border-box; width: 100%; padding: .65rem; background: #071126; color: white; border: 1px solid #677381; border-radius: 8px; font: inherit; }
-.dispute-location button { padding: .65rem 1rem; background: #195739; border: 1px solid #71b991; color: white; border-radius: 8px; cursor: pointer; font: inherit; }
-.dispute-location button:disabled { opacity: .5; cursor: wait; }
+.dispute-map-frame { position: relative; }
+/* svh keeps a strip of page visible above and below the map on phones, so
+   the reporter can always scroll past it. */
+.dispute-location-map { height: 380px; height: min(380px, 55svh); min-height: 240px; width: 100%; border-radius: 12px; z-index: 0; background: #d8e2dd; }
+/* Clear of the zoom buttons (top left) and the attribution (bottom right). */
+.dispute-map-hint { position: absolute; top: .5rem; left: 3.5rem; right: .5rem; z-index: 500; margin: 0; padding: .35rem .6rem; border-radius: 8px; background: rgb(4 10 22 / 82%); color: white; font-size: .8rem; text-align: center; pointer-events: none; }
+.dispute-map-search { display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: end; margin: 1rem 0; }
+.dispute-map-search label { flex: 1 0 100%; font-weight: 600; }
+.dispute-map-search input { flex: 1 1 14rem; }
+@media (max-width: 420px) { .dispute-map-search button { flex: 1 1 100%; } }
+.dispute-map-tools { display: flex; flex-wrap: wrap; gap: .5rem .75rem; margin: .5rem 0; }
+.dispute-location input, .dispute-location select { display: block; box-sizing: border-box; width: 100%; min-height: 44px; padding: .65rem; background: #071126; color: white; border: 1px solid #677381; border-radius: 8px; font: inherit; }
+.dispute-map-search input { width: auto; }
+.dispute-location button { min-height: 44px; padding: .65rem 1rem; background: #195739; border: 1px solid #71b991; color: white; border-radius: 8px; cursor: pointer; font: inherit; }
+.dispute-location button:hover:not(:disabled) { background: #1f6b46; }
+.dispute-location button:disabled { opacity: .6; cursor: not-allowed; }
+.dispute-location button[aria-busy="true"] { cursor: progress; }
+.dispute-location button[aria-pressed="true"] { background: #8ae0b7; color: #09231a; }
+.dispute-location :focus-visible { outline: 3px solid #8ae0b7; outline-offset: 2px; }
+.dispute-map-selected { padding: .6rem .8rem; border-left: 4px solid #4ade80; background: rgb(74 222 128 / 10%); color: #bbf7d0; border-radius: 6px; }
 .dispute-map-legend { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1rem 0; font-size: .85rem; }
 .dispute-map-legend span { display: flex; align-items: center; gap: .35rem; }
 .dispute-map-legend i { width: 16px; height: 16px; border: 2px solid; opacity: .8; border-radius: 4px; }
+/* 44px touch target around a 24px visible dot. */
+.dispute-map-pin { display: flex; align-items: center; justify-content: center; }
 .dispute-map-pin span { display: block; width: 24px; height: 24px; background: #1d4ed8; border: 3px solid white; border-radius: 50%; box-shadow: 0 1px 8px #0009; }
-.dispute-location details { margin-top: 1rem; padding: 1rem; border: 1px solid #526156; border-radius: 10px; }
-.dispute-location summary { cursor: pointer; }
+.dispute-location details { margin-top: 1rem; padding: 0 1rem; border: 1px solid #526156; border-radius: 10px; }
+.dispute-location details[open] { padding-bottom: 1rem; }
+.dispute-location summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; font-weight: 600; }

@@ -1,8 +1,17 @@
 # Developer quick start
 
+Current product: **Land Dispute** (scope confirmed 2026-09-16). The primary flow
+is land-grievance reporting and staff review; FRA monitoring is a supporting
+demonstration. `PROJECT_BRIEF.md` is the current source of truth. Existing hosting
+addresses and infrastructure identifiers still use the historical Forest Watch name.
+
 Application code is grouped by feature in `frontend/src/features` and
 `functions/src/features`. Start with [the project map](docs/ARCHITECTURE.md),
 [debugging guide](docs/DEBUGGING.md), and [organization plan](docs/REORGANIZATION_PLAN.md).
+Working project memory is the Obsidian vault in [`vault/`](vault/00-Index.md)
+(open the folder as a vault). The codebase is reused for several purposes, so
+there is no fixed problem statement; efficiency fixes, abuse/safety barriers, UI
+audit results and candidate features are logged there.
 
 From this folder, run `npm run dev` to start the frontend, or `npm run check:all`
 to run architecture, lint, builds, backend tests and Firestore rules tests.
@@ -10,7 +19,7 @@ See the debugging guide for dependencies and live-service boundaries.
 
 ---
 
-# 🌲 Forest Watch
+# Historical Forest Watch / FRA concept
 ### *Every claim. Every acre. Every anomaly — seen.*
 
 **Forest Watch** is an AI-augmented decision-support platform built to bring

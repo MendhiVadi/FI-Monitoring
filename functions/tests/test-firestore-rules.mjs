@@ -18,7 +18,7 @@ import {
   assertFails,
   assertSucceeds,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, arrayUnion, collection, query, limit, getDocs } from "firebase/firestore";
 
 const RULES = new URL("../../firestore.rules", import.meta.url);
 
@@ -117,6 +117,14 @@ test("case history is staff-readable and server-written", async () => {
     await assertSucceeds(getDoc(doc(officer,path)));
     await assertFails(getDoc(doc(anon,path)));
     await assertFails(setDoc(doc(officer,path),{text:"forged"}));
+  }
+});
+test("officer collection reads must be paged", async () => {
+  for (const path of ["tickets", "tickets/t1/notes", "tickets/t1/events"]) {
+    await assertSucceeds(getDocs(query(collection(officer, path), limit(50))));
+    await assertFails(getDocs(collection(officer, path)));
+    await assertFails(getDocs(query(collection(officer, path), limit(500))));
+    await assertFails(getDocs(query(collection(anon, path), limit(50))));
   }
 });
 test.after(async () => {

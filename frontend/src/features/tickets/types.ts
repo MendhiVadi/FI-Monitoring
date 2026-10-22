@@ -27,6 +27,8 @@ export interface Ticket {
   status: string;
   waFrom?: string;
   phoneVerified?: boolean;
+  // Reporter opted in to WhatsApp updates (only honoured when phoneVerified).
+  whatsappUpdates?: boolean;
   source?: string;
   dispute?: DisputeData;
   messages?: TicketMessage[];

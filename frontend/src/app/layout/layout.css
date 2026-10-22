@@ -1,0 +1,173 @@
+/* Site header and footer. Kept in CSS rather than inline styles so hover,
+   keyboard focus and the narrow-screen layout can share one set of rules. */
+
+.site-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  /* The bar sits over the hero, so it stays nearly transparent until content
+     scrolls under it. */
+  background: rgba(4, 10, 22, 0.25);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid transparent;
+  transition: background 0.25s ease, border-color 0.25s ease, backdrop-filter 0.25s ease;
+}
+.site-header.is-scrolled {
+  background: rgba(4, 10, 22, 0.82);
+  backdrop-filter: blur(14px) saturate(140%);
+  border-bottom-color: rgba(123, 216, 159, 0.16);
+}
+
+.site-header__inner {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  /* Match the 1100px content column used by the sections below. */
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: var(--space-2) clamp(1rem, 4vw, 2rem);
+}
+
+.site-header__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  min-width: var(--tap-target);
+  flex-shrink: 0;
+  color: white;
+  font-weight: 700;
+  font-size: clamp(0.95rem, 3.2vw, 1.1rem);
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.site-header__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #34d399, #047857);
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+.site-header__name { display: flex; flex-direction: column; line-height: 1.15; }
+.site-header__tagline {
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(123, 216, 159, 0.75);
+}
+
+.site-header__nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: clamp(0.25rem, 1.5vw, 1rem);
+  min-width: 0;
+}
+
+.site-header__cta {
+  padding: 0 clamp(0.75rem, 2.5vw, 1.1rem);
+  font-size: clamp(0.8rem, 2.6vw, 0.92rem);
+  white-space: nowrap;
+}
+
+/* Quiet text controls: the staff entry points must not outrank the public
+   call to action. */
+.site-header__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--tap-target);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  font-size: clamp(0.8rem, 2.6vw, 0.92rem);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.site-header__link:hover,
+.site-header__link:focus-visible { color: var(--accent-text); }
+.site-header__link[aria-current="page"] { color: var(--accent-text); text-decoration: underline; text-underline-offset: 0.3em; }
+.site-header__signout:hover,
+.site-header__signout:focus-visible { color: var(--danger); }
+
+.site-header__status {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+/* Narrow screens keep the bar on one row (a wrapped fixed header covers the
+   page). Widths were budgeted for a 360px phone: the brand drops its tagline,
+   then keeps only its mark (its name stays as the link's accessible name), and
+   the signed-in controls, one more than the public bar, lose their decoration
+   earlier. */
+@media (max-width: 639.98px) {
+  .site-header__inner { gap: var(--space-2); }
+  .site-header__tagline,
+  .site-header--staff .site-header__status { display: none; }
+  /* Visually "Portal", but still "Staff Portal" to a screen reader. */
+  .site-header--staff .site-header__wide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+@media (max-width: 479.98px) {
+  .site-header--staff .site-header__name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .site-header__link { padding: 0 0.4rem; }
+}
+@media (max-width: 439.98px) {
+  .site-header__name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding: 2.5rem clamp(1rem, 4vw, 2rem);
+  padding-bottom: max(2.5rem, env(safe-area-inset-bottom));
+  background: var(--bg);
+  color: rgba(255, 255, 255, 0.7);
+}
+.site-footer__nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-footer__nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.site-footer__nav a:hover,
+.site-footer__nav a:focus-visible { color: var(--accent-text); text-decoration: underline; text-underline-offset: 0.3em; }
+.site-footer__nav a[aria-current="page"] { color: white; }
+
+@media (max-width: 479.98px) {
+  .site-footer { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+  .site-footer__nav ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
