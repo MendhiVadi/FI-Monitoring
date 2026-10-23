@@ -27,7 +27,7 @@ export interface Notice { id: number; message: string }
 
 // crypto.randomUUID only exists in secure contexts; a plain-http LAN demo still
 // has getRandomValues. 32 hex chars satisfy the server's 20–80 character check.
-function newRequestId() {
+export function newRequestId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
 }

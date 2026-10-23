@@ -4,7 +4,8 @@ import { db } from "../../platform/firebase";
 import { requireOfficer } from "./authorization";
 
 const fields = ["subject", "status", "waFrom", "source", "phoneVerified", "revision", "noteCount", "createdAt", "updatedAt",
-  "dispute.reporterName", "dispute.otherPartyName", "dispute.reporterType", "dispute.otherPartyType", "dispute.disputeType", "dispute.state", "dispute.district", "dispute.village"];
+  "dispute.reporterName", "dispute.otherPartyName", "dispute.reporterType", "dispute.otherPartyType", "dispute.disputeType", "dispute.state", "dispute.district", "dispute.village",
+  "documents", "closedAt"];
 const wireDate = (date: any) => date && typeof date.seconds === "number" ? { seconds: date.seconds, nanoseconds: date.nanoseconds || 0 } : null;
 function serialize(snapshot: admin.firestore.DocumentSnapshot) {
   const data = snapshot.data()!;

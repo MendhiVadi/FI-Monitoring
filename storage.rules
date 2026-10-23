@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Case documents (Aadhaar and PAN copies, deeds, land records) and their
+// screening images are reached only through Cloud Functions on the Admin SDK,
+// which bypasses these rules: uploads are validated and screened server-side,
+// and staff download through an allow-listed, fresh-session callable. No
+// client may read, list or write any object directly.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

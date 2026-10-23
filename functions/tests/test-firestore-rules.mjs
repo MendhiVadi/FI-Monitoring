@@ -42,10 +42,18 @@ const TICKET = {
   dispute: { reporterName: "A", description: "x", location: { latitude: 22, longitude: 79 } },
 };
 
+// Aadhaar copies and numbers: the most sensitive record the platform holds.
+const CASE_DOCUMENT = {
+  submissionId: "synthetic-submission-0001", ticketId: "t1", status: "attached", kind: "aadhaar", side: "reporter",
+  idNumberFull: "234567890124", idNumberMasked: "XXXX XXXX 0124", storage: { original: "case-documents/d1/original" },
+  screening: { state: "done", risk: "low" }, review: null,
+};
+
 await testEnv.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
   await setDoc(doc(db, "tickets/t1"), TICKET);
   await setDoc(doc(db, "officers/officer-1"), { email: "o@x.gov.in", role: "DFO" });
+  await setDoc(doc(db, "caseDocuments/d1"), CASE_DOCUMENT);
 });
 
 const anon = testEnv.unauthenticatedContext().firestore();
@@ -74,6 +82,7 @@ test("server-only collections are closed to every client", async () => {
     "reporters/phone-abc",
     "whatsappDeliveries/event-abc",
     "disputeVerifications/grant", "submissionReceipts/receipt", "notificationPreferences/preference", "geocodeCache/query", "mapServiceLimits/nominatim",
+    "documentUploadLimits/ip-abc", "documentPurges/d1",
   ]) {
     await assertFails(getDoc(doc(officer, path)));
     await assertFails(getDoc(doc(anon, path)));
@@ -120,11 +129,23 @@ test("case history is staff-readable and server-written", async () => {
   }
 });
 test("officer collection reads must be paged", async () => {
-  for (const path of ["tickets", "tickets/t1/notes", "tickets/t1/events"]) {
+  for (const path of ["tickets", "tickets/t1/notes", "tickets/t1/events", "caseDocuments"]) {
     await assertSucceeds(getDocs(query(collection(officer, path), limit(50))));
     await assertFails(getDocs(collection(officer, path)));
     await assertFails(getDocs(query(collection(officer, path), limit(500))));
     await assertFails(getDocs(query(collection(anon, path), limit(50))));
+  }
+});
+test("case documents are staff-readable and never client-written", async () => {
+  const snap = await assertSucceeds(getDoc(doc(officer, "caseDocuments/d1")));
+  assert.equal(snap.data().kind, "aadhaar");
+  for (const db of [anon, stranger, reporter]) await assertFails(getDoc(doc(db, "caseDocuments/d1")));
+  const old = testEnv.authenticatedContext("officer-1", {auth_time: Math.floor(Date.now()/1000)-28801}).firestore();
+  await assertFails(getDoc(doc(old, "caseDocuments/d1")));
+  for (const db of [officer, anon, stranger]) {
+    await assertFails(setDoc(doc(db, "caseDocuments/forged"), { ...CASE_DOCUMENT, status: "pending" }));
+    await assertFails(updateDoc(doc(db, "caseDocuments/d1"), { review: { decision: "accepted" } }));
+    await assertFails(deleteDoc(doc(db, "caseDocuments/d1")));
   }
 });
 test.after(async () => {

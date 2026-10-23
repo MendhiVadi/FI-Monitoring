@@ -9,7 +9,9 @@ import contract from "../../shared/contracts/dispute.json";
 import { useDraftField } from "./draftStore";
 import { PhoneVerification } from "./PhoneVerification";
 import { maskPhone } from "./maskPhone";
-import { VERIFIED_WINDOW_MS, VERIFY_WARN_MS, formatClock, spokenMinutes, useRemaining } from "./countdown";
+import { VERIFIED_WINDOW_MS, VERIFY_WARN_MS, formatClock, spokenMinutes, useNow, useRemaining } from "./countdown";
+import { DocumentsSection } from "./DocumentsSection";
+import { caseTypeFor, documentProblems, documentSubmitError, isExpired, tokenRefused, useUploadItems } from "./documentUploads";
 
 const DESCRIPTION_MIN = contract.descriptionMin;
 const DESCRIPTION_MAX = contract.descriptionMax;
@@ -57,7 +59,9 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
   // rather than a bare boolean. Comparing tokens means a freshly issued one
   // automatically restores the submit button.
   const [rejectedToken, setRejectedToken] = useState<string | null>(null);
-  const needsReverify = disputeSettings.otpRequired && (!verificationToken || rejectedToken === verificationToken);
+  // tokenRefused: an upload refused while this form was not mounted. Missing
+  // required documents block Submit, the other way back to re-verification.
+  const needsReverify = disputeSettings.otpRequired && (!verificationToken || rejectedToken === verificationToken || tokenRefused(verificationToken));
   const [reverifying, setReverifying] = useState(false);
   const [reverifyStep, setReverifyStep] = useState<"phone" | "otp">("otp");
   const [reporterName, setReporterName] = useDraftField("reporterName");
@@ -76,6 +80,8 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
   const [submissionId] = useDraftField("submissionId");
   const [locationConfirmed, setLocationConfirmed] = useDraftField("locationConfirmed");
   const [whatsappUpdates, setWhatsappUpdates] = useDraftField("whatsappUpdates");
+  const [documents] = useDraftField("documents");
+  const uploadItems = useUploadItems();
   const [submitting, setSubmitting] = useState(false);
   const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +131,15 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
   // and then follows the value live so fixing it clears the message at once.
   // Evidence limits show immediately: they are about what was just typed.
   const shown = (name: FieldName) => (attempts > 0 || touched.has(name) || name === "evidence") ? errors[name] : undefined;
-  const summary = attempts > 0 ? ORDER.filter((name) => errors[name]) : [];
+  const caseType = useMemo(() => caseTypeFor(otherPartyType), [otherPartyType]);
+  const pendingUploads = useMemo(() => uploadItems.filter((item) => item.submissionId === submissionId), [uploadItems, submissionId]);
+  const now = useNow();
+  const docProblems = documentProblems(caseType, documents, pendingUploads, now);
+  // Documents sit between the evidence references and consent on the page.
+  const summary = attempts === 0 ? [] : ORDER.flatMap((name) => [
+    ...(errors[name] ? [{ id: IDS[name], message: errors[name] }] : []),
+    ...(name === "evidence" ? docProblems : []),
+  ]);
   const touch = useCallback((name: FieldName) => {
     setTouched((prev) => prev.has(name) ? prev : new Set(prev).add(name));
   }, []);
@@ -156,7 +170,7 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
 
   // Keyed on a boolean so the listener is not torn down and re-added on
   // every keystroke in the name or description.
-  const dirty = Boolean(reporterName || description);
+  const dirty = Boolean(reporterName || description || documents.length);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
@@ -169,6 +183,8 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
     if (document.activeElement === submitRef.current) focusReverifyNext.current = true;
     setRejectedToken(verificationToken);
   }, [verificationToken]);
+  // An upload refused for a stale proof swaps Submit for re-verification, as a refused submit does.
+  const onUploadUnauthenticated = useCallback(() => setRejectedToken(verificationToken), [verificationToken]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -176,7 +192,7 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
     // re-renders. Retrying after a failure is safe: submissionId is unchanged,
     // so the server replays the original ticket instead of creating a second.
     if (submitting || submitLock.current || needsReverify) return;
-    if (Object.keys(errors).length > 0) {
+    if (Object.keys(errors).length > 0 || docProblems.length > 0) {
       setError(null);
       setAttempts((n) => n + 1);
       return;
@@ -199,6 +215,9 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
         village: village.trim(),
         description: description.trim(),
         location, immediateRisk, evidenceReferences,
+        // The same clock as the checks above: isExpired keeps a margin wider
+        // than its minute steps, so the server still holds every id sent.
+        documentIds: documents.filter((doc) => !isExpired(doc, now)).map((doc) => doc.documentId),
       });
       onSubmitted(result.ticketId);
     } catch (err: unknown) {
@@ -208,7 +227,7 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
         if (!active || active === document.body || active === submitRef.current) focusReverifyNext.current = true;
         setRejectedToken(verificationToken);
       } else {
-        setError(readableCallableError(err, "Couldn't submit the dispute. Please try again."));
+        setError(documentSubmitError(err) ?? readableCallableError(err, "Couldn't submit the dispute. Please try again."));
       }
     } finally {
       submitLock.current = false;
@@ -216,8 +235,8 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
     }
   }
 
-  function jumpTo(name: FieldName) {
-    const target = document.getElementById(IDS[name]);
+  function jumpTo(id: string) {
+    const target = document.getElementById(id);
     if (!target) return;
     target.focus({ preventScroll: true });
     target.scrollIntoView({ block: "center" });
@@ -238,9 +257,9 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
           <div ref={summaryRef} role="alert" tabIndex={-1} className="report-error-summary" aria-labelledby="dispute-error-summary-heading">
             <h2 id="dispute-error-summary-heading">Check {summary.length === 1 ? "this answer" : `these ${summary.length} answers`}</h2>
             <ul>
-              {summary.map((name) => (
-                <li key={name}>
-                  <a href={`#${IDS[name]}`} onClick={(e) => { e.preventDefault(); jumpTo(name); }}>{errors[name]}</a>
+              {summary.map(({ id, message }) => (
+                <li key={id}>
+                  <a href={`#${id}`} onClick={(e) => { e.preventDefault(); jumpTo(id); }}>{message}</a>
                 </li>
               ))}
             </ul>
@@ -392,6 +411,17 @@ export function DisputeForm({ phone, onPhoneChange, verificationToken, verifiedA
             <textarea {...control("evidence", true)} aria-required={undefined} rows={3} maxLength={1209} value={evidenceText} onChange={e => setEvidenceText(e.target.value)} style={inputStyle} />
           </Field>
         </fieldset>
+
+        <DocumentsSection
+          otherPartyType={otherPartyType}
+          submissionId={submissionId}
+          phone={phone}
+          verificationToken={verificationToken}
+          reporterName={reporterName}
+          blocked={needsReverify}
+          onUnauthenticated={onUploadUnauthenticated}
+          showErrors={attempts > 0}
+        />
 
         <fieldset className="report-fieldset" style={{ marginBottom: 0 }}>
           <legend className="report-legend">Consent</legend>

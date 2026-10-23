@@ -21,16 +21,38 @@ const { issueOtp, confirmOtp, recordOtpDelivery, purgeExpiredRecords, verificati
 const { deliverTicketNotification } = require("../lib/features/whatsapp/delivery.js");
 const { recordReceipt, stopNotifications } = require("../lib/features/whatsapp/receipts.js");
 const { reserveGeocodeSlot, releaseGeocodeSlot } = require("../lib/features/maps/geocode.js");
+const { hashId, addressBucket } = require("../lib/features/otp/identity.js");
+const { uploadCaseDocument, removeCaseDocument, purgeDocumentBatch, drainPurgeQueue } = require("../lib/features/documents/service.js");
+const { validateUploadRequest } = require("../lib/features/documents/rules.js");
 const contract = require("../lib/platform/contracts/dispute.json");
 const secret = process.env.DISPUTE_OTP_SECRET;
 const input = validateDisputeInput({ reporterName: "Synthetic reporter", reporterType: contract.reporterTypes[0], otherPartyName: "Synthetic party", otherPartyType: contract.partyTypes[0], disputeType: contract.disputeTypes[0], state: "Maharashtra", district: "Pune", village: "", description: "Synthetic regression case; not an actual dispute.", location: { latitude: 18.52, longitude: 73.85 }, locationConfirmed: true });
+// The default input names an individual, so it is a person-vs-person case.
+const PERSON_KINDS = contract.documents.caseTypes.person_vs_person.required;
+// Pending uploads as uploadDisputeDocument leaves them, bound to a phone or, for guests, an address.
+async function seedDocuments({ submissionId, phone = "", address = "192.0.2.10", kinds = PERSON_KINDS, overrides = {} }) {
+  const batch = db.batch(), ids = [];
+  for (const kind of kinds) {
+    const ref = db.collection("caseDocuments").doc(); ids.push(ref.id);
+    batch.set(ref, { submissionId, phoneHash: phone ? hashId(phone) : null, addressHash: hashId(addressBucket(address)), ticketId: null,
+      status: "pending", kind, side: "reporter", fileName: "synthetic.jpg", contentType: "image/jpeg", sizeBytes: 3, sha256: "synthetic-" + ref.id,
+      expiresAt: Date.now() + 3_600_000, purgeAt: null, storage: { original: "case-documents/" + ref.id + "/original" },
+      screening: { state: "done", risk: "low", score: 0, summary: "", checks: [], extracted: {}, engineVersion: "test", completedAt: null }, review: null,
+      ...overrides[kind] });
+  }
+  await batch.commit();
+  return ids;
+}
 let phoneIndex = 100;
-async function options(phone = "+12025550" + String(++phoneIndex).padStart(3, "0")) {
+async function options(phone = "+12025550" + String(++phoneIndex).padStart(3, "0"), kinds = PERSON_KINDS) {
   const code = await issueOtp(db, phone, secret);
   const verified = await confirmOtp(db, phone, code, secret);
   assert.equal(verified.ok, true);
-  return { input, phone, token: verified.token, submissionId: randomUUID(), address: "192.0.2.10", requireOtp: true, consent: true, consentVersion: contract.version, whatsappUpdates: true, secret };
+  const submissionId = randomUUID();
+  return { input, phone, token: verified.token, submissionId, address: "192.0.2.10", requireOtp: true, consent: true, consentVersion: contract.version, whatsappUpdates: true, secret,
+    documentIds: await seedDocuments({ submissionId, phone, kinds }) };
 }
+const documentStatus = async ids => (await db.getAll(...ids.map(id => db.collection("caseDocuments").doc(id)))).map(snapshot => snapshot.data()?.status);
 const auth = { uid: "synthetic-officer", token: { email: "staff@example.invalid", auth_time: Math.floor(Date.now() / 1000) } };
 const request = data => ({ auth, data });
 test.before(async () => {
@@ -47,8 +69,10 @@ test("an aborted commit leaves the proof, ticket and quota unchanged", async () 
   await assert.rejects(submitDisputeTransaction(failing, data), /commit interruption/);
   assert.equal((await db.collection("tickets").count().get()).data().count, before);
   assert.equal((await db.collection("disputeVerifications").doc(verificationKey(data.token, secret)).get()).data().used, false);
+  assert.deepEqual(await documentStatus(data.documentIds), data.documentIds.map(() => "pending"));
   const saved = await submitDisputeTransaction(db, data);
   assert.ok(saved.ticketId);
+  assert.deepEqual(await documentStatus(data.documentIds), data.documentIds.map(() => "attached"));
 });
 
 test("parallel identical retries create one ticket and spend one verification", async () => {
@@ -77,7 +101,11 @@ test("resending a code preserves completed verification and failed guesses persi
 
 test("parallel guest submissions enforce the daily quota inside the transaction", async () => {
   const data = { input, phone: "", token: "", address: "192.0.2.30", requireOtp: false, consent: true, consentVersion: contract.version, whatsappUpdates: true, secret };
-  const results = await Promise.allSettled(Array.from({ length: 6 }, () => submitDisputeTransaction(db, { ...data, submissionId: randomUUID() })));
+  const submissions = await Promise.all(Array.from({ length: 6 }, async () => {
+    const submissionId = randomUUID();
+    return { ...data, submissionId, documentIds: await seedDocuments({ submissionId, address: data.address }) };
+  }));
+  const results = await Promise.allSettled(submissions.map(submission => submitDisputeTransaction(db, submission)));
   assert.equal(results.filter(result => result.status === "fulfilled").length, 5);
   const failed = results.find(result => result.status === "rejected");
   assert.equal(failed.reason.code, "resource-exhausted");
@@ -94,6 +122,53 @@ test("changing verified phones cannot bypass the shared connection quota", async
   assert.equal(results[rejectedIndex].reason.code, "resource-exhausted");
   const rejected = submissions[rejectedIndex];
   assert.equal((await db.collection("disputeVerifications").doc(verificationKey(rejected.token, secret)).get()).data().used, false);
+  assert.deepEqual(await documentStatus(rejected.documentIds), rejected.documentIds.map(() => "pending"));
+});
+
+test("submission enforces the case type's required documents and attaches them with a summary", async () => {
+  const partial = await options(undefined, ["aadhaar", "pan", "site_photo"]);
+  await assert.rejects(submitDisputeTransaction(db, { ...partial, address: "192.0.2.50" }), error => error.code === "failed-precondition" && /Ownership deed/.test(error.message));
+  assert.equal((await db.collection("disputeVerifications").doc(verificationKey(partial.token, secret)).get()).data().used, false);
+  assert.deepEqual(await documentStatus(partial.documentIds), ["pending", "pending", "pending"]);
+  await assert.rejects(submitDisputeTransaction(db, { ...partial, address: "192.0.2.50", documentIds: [] }), { code: "failed-precondition" });
+  // A government body needs only Aadhaar, so the same uploads now suffice.
+  const government = { ...partial, address: "192.0.2.50", input: { ...input, otherPartyType: "Forest Department" } };
+  const { ticketId } = await submitDisputeTransaction(db, government);
+  const ticket = (await db.collection("tickets").doc(ticketId).get()).data();
+  assert.deepEqual(ticket.documents, { caseType: "citizen_vs_government", count: 3, kinds: ["aadhaar", "pan", "site_photo"], flagged: 0 });
+  for (const id of partial.documentIds) {
+    const saved = (await db.collection("caseDocuments").doc(id).get()).data();
+    assert.equal(saved.status, "attached"); assert.equal(saved.ticketId, ticketId); assert.equal(saved.expiresAt, null);
+  }
+});
+
+test("submission counts flagged documents and refuses uploads it does not own", async () => {
+  const flagged = { ...(await options()), address: "192.0.2.51" };
+  const [first, second] = flagged.documentIds;
+  await db.collection("caseDocuments").doc(first).update({ "screening.risk": "altered" });
+  await db.collection("caseDocuments").doc(second).update({ "screening.risk": "high" });
+  const { ticketId } = await submitDisputeTransaction(db, flagged);
+  assert.equal((await db.collection("tickets").doc(ticketId).get()).data().documents.flagged, 2);
+  // Already attached to that case.
+  const reuse = { ...(await options()), address: "192.0.2.52" };
+  await assert.rejects(submitDisputeTransaction(db, { ...reuse, documentIds: [...reuse.documentIds.slice(1), first] }), { code: "failed-precondition" });
+  const cases = [
+    { submissionId: randomUUID() }, // uploaded under another report
+    { phone: "+12025550999" }, // verified by someone else
+    { overrides: { aadhaar: { expiresAt: Date.now() - 1 } } },
+    // Still being screened: no risk yet for the ticket's flagged count.
+    { overrides: { aadhaar: { screening: { state: "pending", risk: null } } } },
+  ];
+  for (const variant of cases) {
+    const documentIds = await seedDocuments({ submissionId: reuse.submissionId, phone: reuse.phone, ...variant });
+    await assert.rejects(submitDisputeTransaction(db, { ...reuse, documentIds }), { code: "failed-precondition" });
+  }
+  // A guest upload cannot be claimed from another connection.
+  const guest = { input, phone: "", token: "", address: "192.0.2.70", requireOtp: false, consent: true, consentVersion: contract.version, whatsappUpdates: false, secret, submissionId: randomUUID() };
+  const guestDocs = await seedDocuments({ submissionId: guest.submissionId, address: "192.0.2.71" });
+  await assert.rejects(submitDisputeTransaction(db, { ...guest, documentIds: guestDocs }), { code: "failed-precondition" });
+  assert.equal((await db.collection("disputeVerifications").doc(verificationKey(reuse.token, secret)).get()).data().used, false);
+  assert.ok((await submitDisputeTransaction(db, reuse)).ticketId);
 });
 
 test("status changes detect conflicts, reject prototype keys and record immutable reasons", async () => {
@@ -123,7 +198,7 @@ test("notes preserve repeated text as separate entries and retries stay idempote
 
 test("expired sessions fail on all officer callables even when allow-listed", async () => {
   const old = { ...auth, token: { ...auth.token, auth_time: auth.token.auth_time - 28801 } };
-  for (const handler of [handlers.listTickets, handlers.updateTicketStatus, handlers.addTicketNote]) {
+  for (const handler of [handlers.listTickets, handlers.updateTicketStatus, handlers.addTicketNote, handlers.reviewCaseDocument, handlers.getCaseDocumentFile]) {
     await assert.rejects(handler.run({ auth: old, data: {} }), { code: "unauthenticated" });
     await assert.rejects(handler.run({ auth: { ...auth, uid: "not-allow-listed" }, data: {} }), { code: "permission-denied" });
   }
@@ -145,10 +220,12 @@ test("older records remain searchable after 200 items; counts cover the complete
   assert.equal(found, true); assert.ok(pages > 1);
   const exact = await handlers.listTickets.run(request({ search: "synthetic-page-000224" }));
   assert.equal(exact.tickets[0].id, "synthetic-page-000224");
-  await db.collection("tickets").doc("synthetic-page-000224").update({ "dispute.description": "Synthetic private narrative", officerNotes: [{ note: "Synthetic legacy note" }] });
+  const summary = { caseType: "person_vs_person", count: 5, kinds: PERSON_KINDS, flagged: 1 };
+  await db.collection("tickets").doc("synthetic-page-000224").update({ "dispute.description": "Synthetic private narrative", officerNotes: [{ note: "Synthetic legacy note" }], documents: summary });
   const projected = await handlers.listTickets.run(request({ search: "synthetic-page-000224" }));
   assert.equal(projected.tickets[0].dispute.description, undefined);
   assert.equal(projected.tickets[0].officerNotes, undefined);
+  assert.deepEqual(projected.tickets[0].documents, summary);
 });
 
 test("cleanup rechecks expiry after the query so a refreshed record survives", async () => {
@@ -216,4 +293,135 @@ test("STOP persists on older tickets and a replay does not revoke a later explic
   await stopNotifications(phone, String(stopped));
   assert.equal((await older.get()).data().whatsappUpdates, false);
   assert.equal((await newer.get()).data().whatsappUpdates, true);
+});
+
+test("closing a case schedules its documents for purge and reopening cancels it", async () => {
+  const ref = db.collection("tickets").doc("synthetic-closure");
+  await ref.set({ status: "open", revision: 0 });
+  const ids = await seedDocuments({ submissionId: randomUUID(), kinds: ["aadhaar", "site_photo"] });
+  for (const id of ids) await db.collection("caseDocuments").doc(id).update({ status: "attached", ticketId: ref.id, expiresAt: null });
+  const change = (status, expectedRevision) => handlers.updateTicketStatus.run(request({ ticketId: ref.id, status, reason: "Synthetic change", expectedRevision, requestId: randomUUID() }));
+  const before = Date.now();
+  await change("resolved", 0);
+  const closedAt = (await ref.get()).data().closedAt;
+  assert.ok(closedAt >= before);
+  for (const id of ids) assert.equal((await db.collection("caseDocuments").doc(id).get()).data().purgeAt, closedAt + contract.documents.retentionDaysAfterClose * 86_400_000);
+  await change("rejected", 1);
+  assert.equal((await ref.get()).data().closedAt, closedAt);
+  await change("open", 2);
+  assert.equal((await ref.get()).data().closedAt, undefined);
+  for (const id of ids) assert.equal((await db.collection("caseDocuments").doc(id).get()).data().purgeAt, null);
+});
+
+test("document reviews are idempotent, recorded as case events and limited to attached documents", async () => {
+  const ref = db.collection("tickets").doc("synthetic-review");
+  await ref.set({ status: "open", revision: 0 });
+  const [attached, pending] = await seedDocuments({ submissionId: randomUUID(), kinds: ["aadhaar", "pan"] });
+  await db.collection("caseDocuments").doc(attached).update({ status: "attached", ticketId: ref.id, expiresAt: null });
+  const data = { documentId: attached, decision: "reupload_requested", reason: "Synthetic: QR unreadable", requestId: randomUUID() };
+  const results = await Promise.all([handlers.reviewCaseDocument.run(request(data)), handlers.reviewCaseDocument.run(request(data))]);
+  for (const result of results) assert.equal(result.review.decision, "reupload_requested");
+  const events = await ref.collection("events").get();
+  assert.equal(events.size, 1);
+  assert.deepEqual({ ...events.docs[0].data(), at: undefined }, { type: "document_review", documentId: attached, kind: "aadhaar", decision: "reupload_requested",
+    reason: data.reason, actorUid: auth.uid, officerUid: auth.uid, at: undefined, revision: 1 });
+  assert.equal((await ref.get()).data().revision, 1);
+  const saved = (await db.collection("caseDocuments").doc(attached).get()).data().review;
+  assert.equal(saved.by, auth.uid); assert.equal(saved.byEmail, auth.token.email); assert.ok(saved.at instanceof admin.firestore.Timestamp);
+  await assert.rejects(handlers.reviewCaseDocument.run(request({ ...data, documentId: pending, requestId: randomUUID() })), { code: "failed-precondition" });
+  for (const bad of [{ reason: "no" }, { decision: "approved" }]) await assert.rejects(handlers.reviewCaseDocument.run(request({ ...data, ...bad, requestId: randomUUID() })), { code: "invalid-argument" });
+  // A change reference cannot be replayed against another document.
+  await db.collection("caseDocuments").doc(pending).update({ status: "attached", ticketId: ref.id, expiresAt: null });
+  await assert.rejects(handlers.reviewCaseDocument.run(request({ ...data, documentId: pending })), { code: "already-exists" });
+});
+
+function memoryStore() {
+  const objects = new Map();
+  return { objects,
+    save: async (path, bytes) => { objects.set(path, bytes); },
+    read: async path => { if (!objects.has(path)) throw new Error("Synthetic missing object"); return objects.get(path); },
+    removeAll: async id => { for (const key of objects.keys()) if (key.startsWith("case-documents/" + id + "/")) objects.delete(key); } };
+}
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 1, 2, 3]);
+// Stands in for the screening engine so these tests exercise only storage, binding and quotas.
+const fakeEngine = () => ({ ENGINE_VERSION: "test-engine", sniffContentType: bytes => bytes[0] === 0xff ? "image/jpeg" : null,
+  screenDocument: async (screenInput, deps) => {
+    await deps.findDuplicates({ sha256: "synthetic", dhash: null, dhashBands: [], idNumberHash: null, reporterNameNorm: null });
+    return { risk: "low", score: 5, summary: "Synthetic screening", userMessages: ["Synthetic message"],
+      checks: [{ id: "integrity", label: "File integrity", result: "pass", detail: "Synthetic" }], extracted: {},
+      sha256: "synthetic-" + screenInput.kind, dhash: "0000000000000000", dhashBands: ["0:00"], idNumberHash: null, reporterNameNorm: null,
+      width: 800, height: 600, pageCount: null, derived: [{ key: "ela", contentType: "image/png", bytes: Buffer.from("ela") }] };
+  } });
+const uploadRequest = (submissionId, kind = "site_photo", contentType = "image/jpeg") =>
+  validateUploadRequest({ submissionId, kind, fileName: "photo.jpg", contentType, dataBase64: JPEG.toString("base64") });
+
+test("uploads check the phone proof without spending it, cap each report and bind removal to the uploader", async () => {
+  const verified = await options();
+  const store = memoryStore(), deps = { store, engine: fakeEngine(), uidaiCertPem: null }, submissionId = randomUUID();
+  const proof = { phone: verified.phone, token: verified.token, address: "192.0.2.80", requireOtp: true, secret };
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId), { ...proof, token: "0".repeat(64) }), { code: "unauthenticated" });
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId), { ...proof, token: "" }), { code: "unauthenticated" });
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId, "site_photo", "image/png"), proof), { code: "invalid-argument" });
+  const first = await uploadCaseDocument(db, deps, uploadRequest(submissionId, "aadhaar"), proof);
+  assert.deepEqual(first.screening, { state: "done", userMessages: ["Synthetic message"] });
+  const record = (await db.collection("caseDocuments").doc(first.documentId).get()).data();
+  assert.equal(record.phoneHash, hashId(verified.phone)); assert.equal(record.status, "pending"); assert.equal(record.screening.state, "done");
+  assert.equal(record.storage.ela, "case-documents/" + first.documentId + "/ela.png");
+  assert.ok(store.objects.has(record.storage.original));
+  assert.equal((await db.collection("disputeVerifications").doc(verificationKey(verified.token, secret)).get()).data().used, false);
+  for (let i = 1; i < contract.documents.maxFiles; i++) await uploadCaseDocument(db, deps, uploadRequest(submissionId), proof);
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId), proof), { code: "resource-exhausted" });
+  const target = { submissionId, documentId: first.documentId };
+  await assert.rejects(removeCaseDocument(db, store, target, { ...proof, phone: "+12025550998" }), { code: "unauthenticated" });
+  await assert.rejects(removeCaseDocument(db, store, target, { phone: "", token: "", address: proof.address, requireOtp: false, secret }), { code: "not-found" });
+  await assert.rejects(removeCaseDocument(db, store, { ...target, submissionId: randomUUID() }, proof), { code: "not-found" });
+  assert.deepEqual(await removeCaseDocument(db, store, target, proof), { removed: true });
+  assert.equal((await db.collection("caseDocuments").doc(first.documentId).get()).exists, false);
+  assert.equal([...store.objects.keys()].some(key => key.startsWith("case-documents/" + first.documentId + "/")), false);
+  assert.equal((await db.collection("documentPurges").doc(first.documentId).get()).exists, false);
+  assert.deepEqual(await removeCaseDocument(db, store, target, proof), { removed: true });
+  assert.ok((await uploadCaseDocument(db, deps, uploadRequest(submissionId), proof)).documentId);
+});
+
+test("the connection quota holds, and screening or storage failures never leave a broken upload", async () => {
+  const store = memoryStore(), address = "192.0.2.81", submissionId = randomUUID();
+  const guest = { phone: "", token: "", address, requireOtp: false, secret };
+  const quota = db.collection("documentUploadLimits").doc(hashId(addressBucket(address)));
+  await quota.set({ count: 40, bytes: 0, windowStartedAt: Date.now() - 1000 });
+  await assert.rejects(uploadCaseDocument(db, { store, engine: fakeEngine(), uidaiCertPem: null }, uploadRequest(submissionId), guest), { code: "resource-exhausted" });
+  await quota.set({ count: 40, bytes: 0, windowStartedAt: Date.now() - 86_400_001 });
+  const broken = { ...fakeEngine(), screenDocument: async () => { throw new Error("Synthetic engine crash"); } };
+  const saved = await uploadCaseDocument(db, { store, engine: broken, uidaiCertPem: null }, uploadRequest(submissionId), guest);
+  assert.deepEqual(saved.screening, { state: "error", userMessages: [] });
+  assert.equal((await quota.get()).data().count, 1);
+  const record = (await db.collection("caseDocuments").doc(saved.documentId).get()).data();
+  assert.equal(record.phoneHash, null); assert.equal(record.addressHash, hashId(addressBucket(address)));
+  const failing = { ...store, save: async () => { throw new Error("Synthetic storage outage"); } };
+  await assert.rejects(uploadCaseDocument(db, { store: failing, engine: fakeEngine(), uidaiCertPem: null }, uploadRequest(submissionId), guest), { code: "unavailable" });
+  assert.equal((await db.collection("caseDocuments").where("submissionId", "==", submissionId).get()).size, 1);
+});
+
+test("the purge removes lapsed uploads and closed-case files but spares reopened cases", async () => {
+  const store = memoryStore(), submissionId = randomUUID(), now = Date.now();
+  const ids = await seedDocuments({ submissionId, kinds: ["aadhaar", "pan", "ownership_deed", "land_record"], overrides: {
+    aadhaar: { expiresAt: now - 1000 },
+    pan: { status: "attached", ticketId: "synthetic-purge", expiresAt: null, purgeAt: now - 1000 },
+    ownership_deed: { status: "attached", ticketId: "synthetic-purge", expiresAt: null, purgeAt: null },
+  } });
+  const [lapsed, closed, reopened, live] = ids;
+  for (const id of ids) await store.save("case-documents/" + id + "/original", Buffer.from("x"));
+  await purgeDocumentBatch(db, store, "expiresAt", now);
+  await purgeDocumentBatch(db, store, "purgeAt", now);
+  const exists = async id => (await db.collection("caseDocuments").doc(id).get()).exists;
+  assert.equal(await exists(lapsed), false); assert.equal(await exists(closed), false);
+  assert.equal(await exists(reopened), true); assert.equal(await exists(live), true);
+  assert.deepEqual([...store.objects.keys()].sort(), [reopened, live].map(id => "case-documents/" + id + "/original").sort());
+  // A failed Storage delete keeps a tombstone until a later run succeeds.
+  const [stuck] = await seedDocuments({ submissionId, kinds: ["other"], overrides: { other: { expiresAt: now - 1000 } } });
+  const outage = { ...store, removeAll: async () => { throw new Error("Synthetic storage outage"); } };
+  assert.ok((await purgeDocumentBatch(db, outage, "expiresAt", now)).leftOver >= 1);
+  assert.equal(await exists(stuck), false);
+  assert.equal((await db.collection("documentPurges").doc(stuck).get()).exists, true);
+  await drainPurgeQueue(db, store);
+  assert.equal((await db.collection("documentPurges").doc(stuck).get()).exists, false);
 });

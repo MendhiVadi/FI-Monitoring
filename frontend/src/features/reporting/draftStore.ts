@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import contract from "../../shared/contracts/dispute.json";
-import type { Step } from "./types";
+import disputeSettings from "../../../dispute-settings.json";
+import { callFunction } from "./callables";
+import type { Step, UploadedDocument } from "./types";
 
 export const DRAFT_IDLE_MS = 30 * 60 * 1000;
 
@@ -21,7 +23,8 @@ function emptyDraft() {
     otherPartyName: "", otherPartyType: contract.partyTypes[0], disputeType: contract.disputeTypes[0],
     state: "", district: "", village: "", description: "", consent: false, whatsappUpdates: false,
     immediateRisk: "unknown" as "yes" | "no" | "unknown", evidenceText: "",
-    location: null as { latitude: number; longitude: number } | null, locationConfirmed: false };
+    location: null as { latitude: number; longitude: number } | null, locationConfirmed: false,
+    documents: [] as UploadedDocument[], idNumbers: {} as Partial<Record<string, string>> };
 }
 type Draft = ReturnType<typeof emptyDraft>;
 let draft = emptyDraft(), cleanup: ReturnType<typeof setTimeout> | undefined;
@@ -31,9 +34,20 @@ let expiry: { expiresAt: number | null; expiredNotice: boolean } = { expiresAt: 
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach(listener => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-export function clearReportDraft() {
+// The server deletes unsent uploads after pendingTtlMinutes regardless; asking
+// now keeps copies of ID cards around for less time. Best effort: with an
+// expired verification the call fails and the TTL still applies.
+function discardUploads(old: Draft) {
+  const auth = disputeSettings.otpRequired ? { phone: old.phone, verificationToken: old.verificationToken } : {};
+  for (const { documentId } of old.documents) {
+    callFunction("removeDisputeDocument", { submissionId: old.submissionId, ...auth, documentId }).catch(() => {});
+  }
+}
+/** After a successful submit pass `{ discardUploads: false }`: the documents are attached to the ticket. */
+export function clearReportDraft({ discardUploads: discard = true } = {}) {
   if (cleanup) clearTimeout(cleanup);
   cleanup = undefined;
+  if (discard && draft.documents.length > 0) discardUploads(draft);
   draft = emptyDraft();
   expiry = { expiresAt: null, expiredNotice: false };
   notify();
@@ -76,6 +90,13 @@ function setterFor<K extends keyof Draft>(key: K): (value: Draft[K]) => void {
     setters.set(key, setter);
   }
   return setter;
+}
+export function getDraftField<K extends keyof Draft>(key: K): Draft[K] {
+  return draft[key];
+}
+/** For async results (an upload finishing) that must not overwrite a newer value. */
+export function updateDraftField<K extends keyof Draft>(key: K, update: (current: Draft[K]) => Draft[K]) {
+  setterFor(key)(update(draft[key]));
 }
 export function useDraftField<K extends keyof Draft>(key: K): [Draft[K], (value: Draft[K]) => void] {
   // Selecting the field (not the whole draft) means a keystroke in the

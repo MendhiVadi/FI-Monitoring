@@ -3,6 +3,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
 import { requireOfficer } from "./authorization";
 import { TICKET_STATUSES, type TicketStatus } from "./status";
+import { closureUpdate } from "./closure";
 
 export function validTicketId(value: unknown): string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value)) {
@@ -39,8 +40,14 @@ export const updateTicketStatus = onCall({ invoker: "public", maxInstances: 10 }
     const before = ticket.data()!, revision = Number(before.revision) || 0;
     if (revision !== expectedRevision) throw new HttpsError("aborted", "Another officer updated this case. Review the latest details before saving.");
     if (before.status === status) return { ticketId, status, revision };
+    // Closing or reopening moves the document retention clock in the same
+    // commit, so a reopened case can never lose its files to the purge.
+    const closure = closureUpdate(before.status, status, before.closedAt, Date.now());
+    const documents = closure ? (await tx.get(db.collection("caseDocuments").where("ticketId", "==", ticketId).select("ticketId").limit(50))).docs : [];
     const at = admin.firestore.FieldValue.serverTimestamp(), statusLabel = TICKET_STATUSES[status as TicketStatus];
-    tx.update(ref, { status, statusLabel, revision: revision + 1, updatedAt: at, lastUpdatedBy: officer.uid });
+    tx.update(ref, { status, statusLabel, revision: revision + 1, updatedAt: at, lastUpdatedBy: officer.uid,
+      ...(closure ? { closedAt: closure.closedAt ?? admin.firestore.FieldValue.delete() } : {}) });
+    for (const document of documents) tx.update(document.ref, { purgeAt: closure!.purgeAt });
     tx.create(eventRef, { kind: "status", before: before.status, after: status, reason, officerUid: officer.uid, at, revision: revision + 1 });
     return { ticketId, status, statusLabel, revision: revision + 1 };
   });

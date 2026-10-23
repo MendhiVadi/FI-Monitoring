@@ -36,6 +36,12 @@ export const TicketCard = memo(function TicketCard({ ticket, selected, onSelect 
             {ticket.priority === "critical" && (
               <span style={styles.criticalPill}>High Urgency</span>
             )}
+            {(ticket.documents?.flagged ?? 0) > 0 && (
+              <span style={styles.flaggedPill}>
+                <span aria-hidden="true">▲ </span>
+                {ticket.documents!.flagged} document{ticket.documents!.flagged === 1 ? "" : "s"} flagged
+              </span>
+            )}
           </div>
           <h3 style={{ ...styles.ticketTitle, overflowWrap: "anywhere" }}>{ticket.subject || <NotProvided label="No subject recorded" />}</h3>
         </div>

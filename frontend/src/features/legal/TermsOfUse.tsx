@@ -36,6 +36,7 @@ export function TermsOfUse() {
       <p>You agree not to:</p>
       <ul>
         <li>use the site to submit false, abusive, or harassing dispute reports;</li>
+        <li>upload forged or altered documents, or another person's identity documents without their permission;</li>
         <li>attempt to disrupt, overload, or gain unauthorized access to the app or its backend;</li>
         <li>present the mock claim data as genuine government data; or</li>
         <li>use the site in a way that violates applicable law.</li>
@@ -47,6 +48,11 @@ export function TermsOfUse() {
         handled as described in our{" "}
         <Link to="/privacy-policy">Privacy Policy</Link>
         . You are responsible for the accuracy of what you submit.
+      </p>
+      <p>
+        Documents you upload are screened automatically for signs of tampering. A flag
+        only asks staff to look more closely; it is not a finding that a document is
+        false, and it does not reject your report.
       </p>
 
       <h2>Limitation of liability</h2>

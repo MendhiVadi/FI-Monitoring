@@ -67,6 +67,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Uploaded case documents: Aadhaar/PAN copies and numbers, deeds and land
+    // records, plus the screening results. Staff read them from the dossier;
+    // only the upload, submit, review and purge functions (Admin SDK) write.
+    // The files themselves live in Storage, which no client can reach.
+    match /caseDocuments/{documentId} {
+      allow get: if isOfficer();
+      allow list: if isOfficer() && isPagedQuery();
+      allow write: if false;
+    }
+
     // Server-only collections, all reached exclusively by Cloud Functions on
     // the Admin SDK (which bypasses these rules). Denying everything here means
     // a client can never read an OTP hash, flip its own `verified`/`used` flag,
@@ -89,7 +99,8 @@ service cloud.firestore {
 
     // Deny by default: any collection not matched above (disputeVerifications,
     // submissionReceipts, notificationPreferences, geocodeCache,
-    // mapServiceLimits, and anything added later) stays server-only.
+    // mapServiceLimits, documentUploadLimits, documentPurges, and anything
+    // added later) stays server-only.
     match /{document=**} {
       allow read, write: if false;
     }

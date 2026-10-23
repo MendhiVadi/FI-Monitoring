@@ -1,11 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import disputeSettings from "../../../dispute-settings.json";
+import contract from "../../shared/contracts/dispute.json";
 import type { Step } from "./types";
 import { PhoneVerification } from "./PhoneVerification";
 import { DisputeForm } from "./DisputeForm";
 import { Confirmation } from "./Confirmation";
 import { useDraftField, clearReportDraft, useDraftExpiry, touchDraft, dismissDraftExpiredNotice } from "./draftStore";
 import { formatClock, spokenMinutes, useRemaining } from "./countdown";
+import { caseTypeFor } from "./documentUploads";
 import "./reporting.css";
 
 // Only the non-PII reference number is kept, so a refresh on the confirmation
@@ -22,6 +24,10 @@ function writeLastTicket(id: string | null) {
 }
 
 const EXPIRY_WARN_MS = 5 * 60 * 1000;
+// From the contract, so the checklist follows the required documents. The
+// first party type is a private person, the case type that needs the most.
+const BASIC_DOCS = caseTypeFor("Not sure").required;
+const PERSON_DOCS = caseTypeFor(contract.partyTypes[0]).required.filter((kind) => !BASIC_DOCS.includes(kind));
 
 export function ReportIssue() {
   const [savedStep, setStep] = useDraftField("step");
@@ -64,8 +70,12 @@ export function ReportIssue() {
           <p>You will need:</p>
           <ul>
             {disputeSettings.otpRequired && <li>a WhatsApp number to receive a 6-digit verification code;</li>}
-            <li>the location of the land; and</li>
-            <li>a short description of the dispute.</li>
+            <li>the location of the land;</li>
+            <li>a short description of the dispute; and</li>
+            <li>
+              photos or PDFs of your documents: {BASIC_DOCS.map((kind) => kind.label).join(", ")}
+              {PERSON_DOCS.length > 0 && <>; for a dispute with a private person also {PERSON_DOCS.map((kind) => kind.label).join(", ")}</>}.
+            </li>
           </ul>
           <p>
             This creates a report for staff review. It is not a legal filing or government
@@ -101,7 +111,8 @@ export function ReportIssue() {
           verifiedAt={verifiedAt}
           onVerified={onVerified}
           onSubmitted={(id) => {
-            clearReportDraft();
+            // The uploads now belong to the ticket, so they are not discarded.
+            clearReportDraft({ discardUploads: false });
             writeLastTicket(id);
             setLastTicket(id);
             setTicketId(id);

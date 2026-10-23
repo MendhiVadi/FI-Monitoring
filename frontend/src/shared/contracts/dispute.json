@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-16",
+  "version": "2026-10-23",
   "descriptionMin": 20,
   "descriptionMax": 2000,
   "nameMax": 120,
@@ -883,6 +883,144 @@
       "Mahe",
       "Puducherry",
       "Yanam"
+    ]
+  },
+  "documents": {
+    "maxFileBytes": 6291456,
+    "maxFiles": 12,
+    "acceptedTypes": [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf"
+    ],
+    "pendingTtlMinutes": 120,
+    "retentionDaysAfterClose": 90,
+    "caseTypeByPartyType": {
+      "Individual / private person": "person_vs_person",
+      "Forest Department": "citizen_vs_government",
+      "Revenue Department": "citizen_vs_government",
+      "Gram Panchayat / local government": "citizen_vs_government",
+      "Other government body": "citizen_vs_government",
+      "Not sure": "citizen_vs_government"
+    },
+    "caseTypes": {
+      "citizen_vs_government": {
+        "label": "Citizen vs government",
+        "required": [
+          "aadhaar"
+        ],
+        "optional": [
+          "site_photo",
+          "notice",
+          "ownership_deed",
+          "land_record",
+          "police_court",
+          "other"
+        ]
+      },
+      "person_vs_person": {
+        "label": "Person vs person",
+        "required": [
+          "aadhaar",
+          "pan",
+          "ownership_deed",
+          "land_record",
+          "possession_proof"
+        ],
+        "optional": [
+          "encumbrance",
+          "mutation",
+          "survey_map",
+          "other_party_document",
+          "site_photo",
+          "notice",
+          "police_court",
+          "other"
+        ]
+      }
+    },
+    "kinds": [
+      {
+        "id": "aadhaar",
+        "label": "Aadhaar card or e-Aadhaar PDF",
+        "side": "reporter",
+        "idNumber": "aadhaar",
+        "hint": "Upload the e-Aadhaar PDF from myAadhaar, or a sharp, flat photo of the side with the QR code."
+      },
+      {
+        "id": "pan",
+        "label": "PAN card",
+        "side": "reporter",
+        "idNumber": "pan",
+        "hint": "A clear photo or e-PAN PDF."
+      },
+      {
+        "id": "ownership_deed",
+        "label": "Ownership deed",
+        "side": "reporter",
+        "hint": "Sale, gift or partition deed, will, or patta in your name."
+      },
+      {
+        "id": "land_record",
+        "label": "Land record extract",
+        "side": "reporter",
+        "hint": "Latest 7/12, khatauni, jamabandi or record of rights."
+      },
+      {
+        "id": "possession_proof",
+        "label": "Proof of possession",
+        "side": "reporter",
+        "hint": "Property tax receipt or utility bill for this land."
+      },
+      {
+        "id": "encumbrance",
+        "label": "Encumbrance certificate",
+        "side": "reporter",
+        "hint": ""
+      },
+      {
+        "id": "mutation",
+        "label": "Mutation entry",
+        "side": "reporter",
+        "hint": ""
+      },
+      {
+        "id": "survey_map",
+        "label": "Survey or site map",
+        "side": "reporter",
+        "hint": ""
+      },
+      {
+        "id": "site_photo",
+        "label": "Photos of the land or construction",
+        "side": "reporter",
+        "hint": ""
+      },
+      {
+        "id": "notice",
+        "label": "Notice or order received",
+        "side": "reporter",
+        "hint": "Any letter, notice or order from an authority."
+      },
+      {
+        "id": "other_party_document",
+        "label": "Other party’s documents",
+        "side": "other_party",
+        "hint": "Papers the other side has shown or served on you."
+      },
+      {
+        "id": "police_court",
+        "label": "Police complaint or court papers",
+        "side": "reporter",
+        "hint": ""
+      },
+      {
+        "id": "other",
+        "label": "Other supporting document",
+        "side": "reporter",
+        "hint": ""
+      }
     ]
   }
 }

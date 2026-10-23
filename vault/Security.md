@@ -6,3 +6,4 @@
 - Map proxy: fixed upstreams, origin allow-list, per-IP limits; geocoding shares one serialized Nominatim queue via `geocodePlace`.
 - Secrets live in Firebase Secret Manager / Vercel env, referenced by name only. `Read-Only-Folder/` holds local credentials, is gitignored, and must never be read by tools or copied into notes.
 - Abuse/cost barriers added on 2026-10-22: see [[Efficiency-and-Barriers]].
+- Documents (2026-10-23): `caseDocuments` officer-read only, Storage deny-all to clients, upload limits (6 MiB, 12 per report, 40/day and 60 MiB/day per connection), magic-byte checks, Aadhaar masked in the admin UI until revealed, reporters never see risk, review decisions are immutable ticket events, 90-day post-closure purge. See [[Documents-and-Screening]].

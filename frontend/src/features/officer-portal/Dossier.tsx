@@ -6,6 +6,8 @@ import { SessionExpiryBanner } from "../auth/SessionExpiryBanner";
 import { Spinner } from "../auth/Spinner";
 import { StatusBadge } from "../tickets/StatusBadge";
 import { DossierActions } from "./DossierActions";
+import { DocumentsSection } from "./DocumentsSection";
+import { REVIEW_LABELS, kindLabel, type ReviewDecision } from "../tickets/caseDocuments";
 import { NoticeRegion } from "./NoticeRegion";
 import { actorLabel, decisionTone, formatTimestamp } from "./presentation";
 import { EventTime, NotProvided } from "./CaseText";
@@ -46,7 +48,7 @@ function Detail({ label, children, valueStyle }: { label: string; children: Reac
 export function Dossier({ portal }: { portal: Portal }) {
   const { selectedId, selectedTicket: ticket, setSelectedTicket, detailError, retryDetail, selectedDecision, officerEmail, currentUid,
     statusReason, setStatusReason, newOfficerNote, setNewOfficerNote, saveError, clearSaveError, savingKind,
-    handleUpdateStatus, handleAddNote, events, notes, moreNotes, notesBusy, loadOlderNotes, notice, dismissNotice } = portal;
+    handleUpdateStatus, handleAddNote, events, notes, moreNotes, notesBusy, loadOlderNotes, notice, showNotice, dismissNotice } = portal;
   const close = () => setSelectedTicket(null);
   const [printedAt, setPrintedAt] = useState(() => new Date());
   const [preparingPrint, setPreparingPrint] = useState(false);
@@ -299,6 +301,8 @@ export function Dossier({ portal }: { portal: Portal }) {
                     </div>
                   </section>
 
+                  <DocumentsSection ticket={ticket} currentUid={currentUid} onNotice={showNotice} />
+
                   {!!dispute?.evidenceReferences?.length && (
                     <section style={styles.modalSectionCard}>
                       <SectionTitle color="#fcd34d" title="Evidence references supplied by the reporter">
@@ -353,7 +357,12 @@ export function Dossier({ portal }: { portal: Portal }) {
                       <ol className="dossier-history">
                         {events.map(event => (
                           <li key={event.id}>
-                            {event.kind === "status" ? (
+                            {event.type === "document_review" ? (
+                              <div style={{ fontSize: "0.85rem", color: "#e5e7eb", fontWeight: 600 }}>
+                                Document reviewed: {event.kind ? kindLabel(event.kind) : "document"} ·{" "}
+                                {event.decision && Object.hasOwn(REVIEW_LABELS, event.decision) ? REVIEW_LABELS[event.decision as ReviewDecision] : "Decision recorded"}
+                              </div>
+                            ) : event.kind === "status" ? (
                               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
                                 <span className="sr-only">Status changed from</span>
                                 {event.before ? <StatusBadge status={event.before} /> : <NotProvided label="Unknown" />}
@@ -364,11 +373,11 @@ export function Dossier({ portal }: { portal: Portal }) {
                             ) : (
                               <div style={{ fontSize: "0.85rem", color: "#e5e7eb", fontWeight: 600 }}>Case note added</div>
                             )}
-                            {event.kind === "status" && event.reason && (
+                            {(event.kind === "status" || event.type === "document_review") && event.reason && (
                               <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem", color: "#e5e7eb", overflowWrap: "anywhere" }}>“{event.reason}”</p>
                             )}
                             <small style={{ display: "block", marginTop: "0.25rem", color: "#94a3b8" }}>
-                              {actorLabel(event.officerUid, currentUid)} · <EventTime at={event.at} />
+                              {actorLabel(event.officerUid ?? event.actorUid, currentUid)} · <EventTime at={event.at} />
                             </small>
                           </li>
                         ))}

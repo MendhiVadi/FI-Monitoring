@@ -28,6 +28,21 @@ export function useRemaining(deadline: number | null, tickWithinMs = Infinity): 
   return deadline === null ? null : Math.max(0, deadline - now);
 }
 
+/** The current time, refreshed every `stepMs`: for checks that only need minute precision. */
+export function useNow(stepMs = 60_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const refresh = () => setNow(Date.now());
+    const timer = setInterval(refresh, stepMs);
+    // Timers stall while a phone sleeps or the tab is hidden; a reporter coming
+    // back hours later must not see, or send, expired uploads as still usable.
+    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); };
+  }, [stepMs]);
+  return now;
+}
+
 export function formatClock(ms: number): string {
   const total = Math.ceil(ms / 1000);
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;

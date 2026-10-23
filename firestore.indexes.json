@@ -5,6 +5,10 @@
     { "collectionGroup": "tickets", "fieldPath": "dispute.evidenceReferences", "indexes": [] },
     { "collectionGroup": "notes", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "events", "fieldPath": "reason", "indexes": [] },
-    { "collectionGroup": "geocodeCache", "fieldPath": "place", "indexes": [] }
+    { "collectionGroup": "geocodeCache", "fieldPath": "place", "indexes": [] },
+    { "collectionGroup": "caseDocuments", "fieldPath": "screening", "indexes": [] },
+    { "collectionGroup": "caseDocuments", "fieldPath": "idNumberFull", "indexes": [] },
+    { "collectionGroup": "caseDocuments", "fieldPath": "idNumberMasked", "indexes": [] },
+    { "collectionGroup": "caseDocuments", "fieldPath": "fileName", "indexes": [] }
   ]
 }

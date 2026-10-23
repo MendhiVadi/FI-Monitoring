@@ -3,7 +3,11 @@ import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter
 import { db } from "../../shared/firebase/firestore";
 import type { Ticket } from "./types";
 export interface OfficerNote { id: string; text: string; officerUid: string; at?: { seconds: number } }
-export interface CaseEvent { id: string; kind: string; before?: string; after?: string; reason?: string; officerUid: string; at?: { seconds: number } }
+// Document reviews carry type "document_review", the document's kind in kind and actorUid.
+export interface CaseEvent {
+  id: string; kind: string; type?: string; before?: string; after?: string; reason?: string;
+  documentId?: string; decision?: string; officerUid?: string; actorUid?: string; at?: { seconds: number };
+}
 const NONE: never[] = [];
 // Bumping attempt re-subscribes the same case after a failed load (dossier Retry).
 export function useTicketDetail(id: string | null, attempt = 0) {

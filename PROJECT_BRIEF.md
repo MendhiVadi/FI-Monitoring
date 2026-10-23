@@ -104,7 +104,19 @@ official record or as a fallback in the staff registry.
 - `whatsappWebhook` — signed delivery receipts and STOP handling;
 - creation/update notification triggers — opt-in checks, event deduplication,
   receipt tracking and conservative handling of uncertain sends;
-- `purgeExpiredOtps` — hourly, race-safe cleanup of temporary server state.
+- `purgeExpiredOtps` — hourly, race-safe cleanup of temporary server state;
+- `uploadDisputeDocument` / `removeDisputeDocument` — case-type document uploads
+  (Aadhaar, PAN, deeds, land records…) checked against the verification grant
+  without spending it, stored in Firebase Storage and screened for signs of
+  forgery before the reply; `submitDispute` enforces the required kinds;
+- `getCaseDocumentFile` / `reviewCaseDocument` — officer preview and an audited
+  Accept / Reject / Request re-upload decision per document;
+- `purgeExpiredDocuments` — daily deletion of unsent uploads (2 h) and of case
+  documents 90 days after the case closes.
+
+Documents are a mock-up decision (2026-10-23): Aadhaar copies and numbers are
+stored and scanned. Screening only flags documents for staff and never rejects a
+report; reporters never see risk levels. See `vault/Documents-and-Screening.md`.
 
 `frontend/api/maps.js` — Vercel serverless proxy to fixed map upstreams, with an
 origin allow-list and per-IP limits. Geocoding delegates to `geocodePlace` so
@@ -113,7 +125,8 @@ multiple proxy instances share the upstream rate limit.
 Security model: `firestore.rules` allows ticket reads to allow-listed officers
 only; all writes go through Cloud Functions on the Admin SDK. `disputeOtps`,
 `otpSendLimits`, `reporterLimits`, verification grants, retry receipts, notification
-state and map service state are closed to every client.
+state and map service state are closed to every client. `caseDocuments` is
+readable by allow-listed officers only; `storage.rules` deny all client access.
 
 ## Remaining product and release work
 
@@ -125,8 +138,12 @@ state and map service state are closed to every client.
   boundaries, official records, trends and optional LLM explanations remain future
   integration work. See `docs/FRA_DEMO.md` for schema and provenance.
 - Confirm the real service operator, support channel and case-retention policy
-  before public launch. Temporary-state cleanup is implemented; case records have
-  no automatic deletion period configured.
+  before public launch. Temporary-state cleanup is implemented and uploaded
+  documents are deleted 90 days after a case closes; the case records themselves
+  have no automatic deletion period configured.
+- Document screening needs UIDAI's Secure QR certificate at
+  `functions/assets/uidai/uidai-secure-qr.pem` before the QR signature check can
+  run, and has only been tested with synthetic data (see `functions/assets/README.md`).
 - Hosting, public routes, geocoding and signed-out access controls passed release
   checks. Live signed-in workflows, OTP/message delivery and Android still need
   their stated acceptance checks.

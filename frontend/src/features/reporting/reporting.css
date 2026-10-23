@@ -36,6 +36,25 @@
 .phone-row { display: grid; grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr); gap: .75rem; }
 @media (max-width: 400px) { .phone-row { grid-template-columns: 1fr; } }
 
+/* Document uploads (DocumentsSection). Status is never colour alone: each
+   state also has its own words. */
+.report-docs-intro { margin-bottom: 1rem; padding: .75rem .9rem; border-radius: var(--radius-md); background: var(--surface-raised); line-height: 1.5; }
+.report-docs-intro:focus { outline: none; }
+.report-docs-intro:focus-visible { outline: 3px solid var(--focus-ring); }
+.report-doc-kind { margin-bottom: .75rem; padding: .9rem 1rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); }
+.report-doc-kind[data-invalid="true"] { border-color: var(--danger); }
+.report-doc-title { margin: 0 0 .3rem; font-size: 1rem; line-height: 1.4; }
+.report-doc-files { list-style: none; margin: .5rem 0 .75rem; padding: 0; }
+.report-doc-file { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .75rem; padding: .25rem 0; border-top: 1px solid var(--border-subtle); }
+.report-doc-file:last-child { border-bottom: 1px solid var(--border-subtle); }
+.report-doc-name { flex: 1 1 12rem; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.report-doc-size, .report-doc-status { font-size: .85rem; color: #b8c4cc; }
+.report-doc-status[data-state="done"] { color: var(--accent-text); font-weight: 600; }
+.report-doc-status[data-state="error"] { color: #fca5a5; font-weight: 600; }
+.report-doc-messages { flex-basis: 100%; margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .85rem; line-height: 1.5; color: #fde68a; }
+.report-doc-wide { flex-basis: 100%; margin: 0 0 .4rem; }
+@media (max-width: 420px) { .report-doc-kind > .report-btn { width: 100%; } }
+
 .report-error-summary { margin: 0 0 1.5rem; padding: 1rem; border: 2px solid #f87171; border-radius: 12px; background: rgba(239, 68, 68, .1); }
 .report-error-summary h2 { margin: 0 0 .5rem; font-size: 1.05rem; color: #fecaca; }
 .report-error-summary ul { margin: 0; padding-left: 1.2rem; line-height: 1.8; }

@@ -10,9 +10,9 @@ export function loadCallables() {
   return sdk;
 }
 
-export async function callFunction<Req, Res>(name: string, data: Req): Promise<Res> {
+export async function callFunction<Req, Res>(name: string, data: Req, options?: { timeout?: number }): Promise<Res> {
   const [{ httpsCallable }, { functions }] = await loadCallables();
-  const result = await httpsCallable<Req, Res>(functions, name)(data);
+  const result = await httpsCallable<Req, Res>(functions, name, options)(data);
   return result.data;
 }
 
