@@ -1,6 +1,49 @@
 # Production deployment
 
-## Current frontend release — Land Dispute scroll refinement, 2026-09-16
+## Current full-stack release — efficiency/UI overhaul and document screening, 2026-10-26
+
+- Source: branch `efficiency-ui-overhaul` at `9398ca1` (PR MendhiVadi/FI-Monitoring#1,
+  not yet merged into `master`). Deployed from a clean working tree.
+- Pre-deploy on that commit: `npm run check` (secret scan, architecture, lint,
+  builds, bundle budget, 37 Functions + 16 frontend tests) and 34 emulator
+  rules/transaction tests all passed.
+- Firebase Storage: default bucket `tree-top-d61c6.firebasestorage.app` created in
+  ASIA-SOUTH1 (Mumbai, next to Firestore) through the Firebase Storage API.
+- Firestore rules, indexes (field-index exemptions) and the new deny-all
+  `storage.rules` released. Two older composite indexes not in the file were left
+  in place (no `--force`).
+- Functions: 16 ACTIVE on Node 22 Gen 2 — 5 created (`uploadDisputeDocument`,
+  `removeDisputeDocument`, `getCaseDocumentFile`, `reviewCaseDocument`,
+  `purgeExpiredDocuments`), 11 updated. Schedulers `purgeExpiredDocuments` (every
+  24 hours) and `purgeExpiredOtps` (every 60 minutes) ENABLED.
+- Vercel: https://forest-watch-og7q8jtyj-medhanshkhattar05-8450s-projects.vercel.app,
+  READY, production; `forest-watch-eight.vercel.app` aliases to it. The first CLI
+  attempt returned "Not authorized"; an immediate retry succeeded.
+- Contract/consent version is now `2026-10-23`; old tabs must reload to submit.
+
+Live checks after release (read-only; no messages sent, no records created):
+
+- `/`, `/report`, `/login`, `/fra-monitoring`, `/privacy-policy`, `/officer-portal`
+  returned 200. Hashed assets are `immutable`; a missing asset returns 404 `no-store`;
+  `nosniff`, Referrer-Policy, X-Frame-Options and Permissions-Policy
+  (`geolocation=(self)`) are present.
+- Map proxy: geocode 200 with `Vary: Origin`; a foreign `Origin` gets 403.
+- Empty `submitDispute`, `requestDisputeOtp`, `verifyDisputeOtp`,
+  `uploadDisputeDocument` and `removeDisputeDocument` calls returned 400
+  `INVALID_ARGUMENT`. A well-formed PNG upload without a valid verification returned
+  401 and loaded the screening engine with no load error in the function logs.
+- Signed out, `listTickets`, `updateTicketStatus`, `addTicketNote`,
+  `getCaseDocumentFile` and `reviewCaseDocument` returned 401 `UNAUTHENTICATED`.
+- Browser: home globe renders and scroll-animates, the report page lists the
+  required documents, the privacy notice shows version 2026-10-23 with "Documents
+  you upload", the login page renders; no console errors.
+
+Not verified live: OTP delivery (Meta template still pending, so no production
+report or upload can complete yet), signed-in staff flows including the Documents
+tab, a real document screen, and Android. The UIDAI Secure QR certificate is not
+installed, so the QR signature check reports "unavailable".
+
+## Earlier frontend release — Land Dispute scroll refinement, 2026-09-16
 
 - Public site: https://forest-watch-eight.vercel.app (historical URL retained).
 - Vercel deployment: `dpl_9ENesfQpcqYBvQY6Up4frgZjXDT9`, READY, production.
