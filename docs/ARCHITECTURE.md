@@ -53,6 +53,13 @@ names are API contracts, even if the internal source file changes.
 | `whatsappWebhook` | `features/whatsapp/webhook.ts` |
 | `notifyWhatsAppOnTicketUpdate` | `features/whatsapp/notifications.ts` |
 | `notifyWhatsAppOnTicketCreated` | `features/whatsapp/created.ts` |
+| `uploadDisputeDocument`, `removeDisputeDocument`, `getCaseDocumentFile`, `reviewCaseDocument` | `features/documents/handlers.ts` |
+| `purgeExpiredDocuments` | `features/documents/cleanup.ts` |
+
+`features/documents/screening/` is the forgery-screening engine (file integrity, metadata,
+JPEG tables, ELA, duplicates, Aadhaar Secure QR signature, OCR vs QR, ID-number checks,
+name match, faces). It is loaded lazily by `uploadDisputeDocument` only, so no other
+function pays its cold start. Spec and check list: `vault/Documents-and-Screening.md`.
 
 Domain operations live in `disputes/service.ts` and `otp/service.ts`; keyed identities
 in `otp/identity.ts`; officer checks in `tickets/authorization.ts`; canonical backend

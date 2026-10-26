@@ -1,0 +1,117 @@
+.home-scroll { height: 190vh; height: 190svh; position: relative; }
+.home-hero {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  min-height: 580px;
+  background: #081428;
+  isolation: isolate;
+}
+.home-hero--sticky { position: sticky; top: 0; min-height: 0; }
+.home-hero-scene { position: absolute; inset: 0; pointer-events: none; }
+.home-hero-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6rem 1.5rem max(2rem, env(safe-area-inset-bottom));
+  text-align: center;
+  background: linear-gradient(to bottom, transparent 30%, rgb(8 20 40 / 55%) 60%, #081428 100%);
+  pointer-events: none;
+}
+.home-eyebrow { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.15em; color: #91ddbd; margin: 0 0 0.75rem; }
+.home-hero h1 { font-size: clamp(2rem, 4.4vw, 3.5rem); line-height: 1.07; letter-spacing: -0.035em; }
+.home-hero-description { max-width: 490px; color: #c2ceda; line-height: 1.55; margin: 1rem 0 1.25rem; }
+.home-actions { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 1rem 1.5rem; }
+.home-actions a { pointer-events: auto; }
+/* The one primary public action ("Report a dispute") on the landing page:
+   dark text on mint is 10.6:1, and the size/font are explicit so every entry
+   point (hero, #land-actions, closing section) renders identically. */
+.home-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  background: #8ae0b7;
+  color: #09231a;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  text-decoration: none;
+}
+.home-button:hover { background: #b0f0d1; }
+.home-text-link { display: inline-flex; align-items: center; min-height: 44px; color: #d5e6ef; text-underline-offset: 0.3em; }
+.home-button:focus-visible, .home-text-link:focus-visible { outline: 2px solid white; outline-offset: 5px; }
+.home-scroll-hint { margin: 1.5rem 0 0; font-size: 0.78rem; color: #a2b5c5; }
+.home-land-actions { padding: 4rem 1.5rem 2rem; text-align: center; scroll-margin-top: 6rem; }
+.home-land-actions h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); margin: 0 0 0.75rem; }
+.home-land-actions p { max-width: 620px; line-height: 1.6; margin: 0 auto 1.5rem; color: #b9c9d5; }
+.home-demo-link { margin: 3rem auto 0; max-width: 680px; padding: 1.5rem; border: 1px solid #244136; border-radius: 1rem; }
+.home-demo-link h3 { margin-top: 0; }
+/* Settled static hero (reduced motion / no WebGL / scene error): sized to its
+   content over the earth image instead of a full-screen empty dark panel. */
+.home-hero--static {
+  height: auto;
+  min-height: 0;
+  padding: 8rem 1.5rem 4rem;
+  background:
+    /* 72% at its lightest keeps the #c2ceda description >= 4.5:1 even over
+       the texture's snow and ice. */
+    radial-gradient(circle at 50% 30%, rgb(8 20 40 / 72%), #081428 70%),
+    url(/earth.jpg) center 30% / cover,
+    #081428;
+}
+.home-hero--static .home-hero-content { position: static; justify-content: center; padding: 0; background: none; pointer-events: auto; }
+.home-cta { background: #0d2818; padding: 4rem 1.5rem; text-align: center; }
+.home-cta h2 { font-size: 1.5rem; margin: 0 0 0.75rem; }
+.home-cta p { max-width: 480px; margin: 0 auto 1.5rem; color: #c3d3c9; line-height: 1.55; }
+.home-cta .home-cta-legal { margin: 1rem auto 0; font-size: 0.85rem; color: #a9bcb0; }
+.home-cta-legal a { color: inherit; text-decoration: underline; text-underline-offset: 0.2em; }
+.home-cta-legal a:focus-visible { outline: 2px solid white; outline-offset: 3px; border-radius: 2px; }
+/* Land-use map section (ForestMapSection). */
+.fw-section { padding: 5rem 1.5rem; max-width: 1100px; margin: 0 auto; }
+.fw-section > h2 { font-size: 1.75rem; margin: 0 0 0.5rem; }
+.fw-intro { color: #b9c9d5; margin: 0 0 1.5rem; max-width: 640px; line-height: 1.55; }
+.fw-map-grid { display: grid; grid-template-columns: minmax(280px, 480px) 1fr; gap: 3rem; align-items: start; margin-top: 2rem; }
+.fw-map { display: block; width: 100%; max-width: 480px; height: auto; }
+.fw-marker { cursor: pointer; outline: none; }
+.fw-marker circle { transition: fill-opacity 0.15s; }
+.fw-marker:focus-visible circle { stroke: white; stroke-width: 3; }
+.fw-marker:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+.fw-table-scroll { overflow-x: auto; }
+.fw-table-scroll table { width: 100%; min-width: 480px; border-collapse: collapse; font-size: 0.9rem; }
+.fw-table-scroll th, .fw-table-scroll td { padding: 0.6rem 0.75rem; }
+.fw-table-scroll th { text-align: left; color: #b9c9d5; font-weight: 600; }
+.fw-table-scroll thead tr { border-bottom: 1px solid rgb(255 255 255 / 15%); }
+.fw-row { border-bottom: 1px solid rgb(255 255 255 / 8%); transition: background 0.15s; cursor: pointer; }
+.fw-row--active { background: rgb(74 222 128 / 10%); }
+.fw-row:focus-visible { outline: 2px solid #8ae0b7; outline-offset: -2px; }
+.fw-landuse-bar { display: flex; height: 8px; min-width: 140px; border-radius: 999px; overflow: hidden; }
+@media (max-width: 860px) {
+  .fw-map-grid { grid-template-columns: 1fr; gap: 2rem; }
+}
+/* Below ~530px the 480px table minimum is wider than the padded section, so
+   drop it (with margin) before it scrolls sideways. */
+@media (max-width: 560px) {
+  .fw-section { padding: 4rem 1rem; }
+  .fw-table-scroll table { min-width: 0; font-size: 0.85rem; }
+  .fw-table-scroll th, .fw-table-scroll td { padding: 0.6rem 0.4rem; }
+  .fw-landuse-bar { min-width: 80px; }
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .home-scroll { height: 160vh; height: 160svh; }
+  .home-hero-content { padding: 6rem 1rem max(1.5rem, env(safe-area-inset-bottom)); }
+  .home-hero-description { font-size: 0.93rem; }
+  .home-scroll-hint { margin-top: 1rem; }
+}
+@media (max-height: 600px) {
+  .home-hero h1 { font-size: clamp(1.5rem, 5vh, 2.2rem); }
+  .home-hero-description { margin: 0.6rem 0 0.8rem; }
+  .home-eyebrow, .home-scroll-hint { display: none; }
+  .home-hero-content { padding-bottom: 1rem; }
+}

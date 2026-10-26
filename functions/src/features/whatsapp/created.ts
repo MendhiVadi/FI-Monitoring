@@ -3,7 +3,7 @@ import { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, DISPUTE_OTP_SECRET } f
 import { deliverTicketNotification } from "./delivery";
 
 export const notifyWhatsAppOnTicketCreated = onDocumentCreated({
-  document: "tickets/{ticketId}", region: "asia-south1", retry: true,
+  document: "tickets/{ticketId}", region: "asia-south1", retry: true, maxInstances: 10,
   secrets: [WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, DISPUTE_OTP_SECRET],
 }, async (event) => {
   const ticket = event.data?.data();

@@ -8,6 +8,8 @@
     "outDir": "lib",
     "rootDir": "src",
     "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,

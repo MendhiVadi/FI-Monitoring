@@ -1,0 +1,184 @@
+/* Staff portal rules that inline style objects cannot express: focus rings,
+ * hover/pressed states, breakpoints, the dossier's single scroll area and print. */
+
+.officer-portal :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #7bd89f;
+  outline-offset: 2px;
+}
+.officer-portal :where(input, select, textarea):focus-visible {
+  border-color: #7bd89f !important;
+  box-shadow: 0 0 0 3px rgba(123, 216, 159, 0.35);
+}
+.officer-portal button:disabled { cursor: not-allowed; opacity: 0.6; }
+.officer-portal .icon-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.officer-portal .portal-btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; }
+.officer-portal .sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Header: one compact row on phones (target <= 64px). */
+.portal-header-full { display: flex; align-items: center; gap: clamp(0.5rem, 2vw, 18px); flex-wrap: wrap; }
+.portal-header-compact { display: none; position: relative; }
+.portal-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: min(260px, calc(100vw - 32px));
+  background: #0b1a33; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 12px; padding: 0.5rem;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5); display: grid; gap: 0.25rem;
+}
+.portal-menu a, .portal-menu button {
+  min-height: 44px; display: flex; align-items: center; padding: 0 0.75rem; border-radius: 8px;
+  color: #e5e7eb; text-decoration: none; background: none; border: 0; font: inherit; font-size: 0.88rem; cursor: pointer; text-align: left;
+}
+.portal-menu a:hover, .portal-menu button:hover { background: rgba(255, 255, 255, 0.06); }
+@media (max-width: 639px) {
+  .portal-header-full, .portal-header-tagline, .portal-live-badge { display: none !important; }
+  .portal-header-compact { display: block; }
+  .portal-header { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+}
+
+/* Metrics double as status filters. */
+.portal-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 1rem; margin-bottom: 1.75rem; }
+.portal-metric {
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  background: rgba(10, 20, 40, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-left-width: 4px;
+  border-radius: 14px; padding: 1.1rem 1.2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  transition: border-color 0.15s, background 0.15s;
+}
+.portal-metric:hover { background: rgba(20, 34, 60, 0.75); }
+.portal-metric[aria-pressed="true"] { border-color: #7bd89f; background: rgba(34, 197, 94, 0.08); }
+.portal-metric-label { display: block; font-size: 0.75rem; font-weight: 600; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.05em; }
+.portal-metric-value { display: block; font-size: 2rem; font-weight: 800; margin: 0.3rem 0 0.1rem; font-variant-numeric: tabular-nums; }
+.portal-metric-sub { display: block; font-size: 0.75rem; color: #94a3b8; }
+@media (max-width: 479px) {
+  .portal-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+  .portal-metric { padding: 0.85rem; }
+  .portal-metric-value { font-size: 1.6rem; }
+  .portal-metric:first-child { grid-column: 1 / -1; }
+}
+
+/* Search and filter toolbar. */
+.portal-toolbar { display: flex; gap: 0.75rem 1rem; align-items: center; flex-wrap: wrap; }
+.staff-search { flex: 1 1 260px; min-width: 0; min-height: 44px; }
+.staff-search:focus-within { border-color: #7bd89f !important; box-shadow: 0 0 0 3px rgba(123, 216, 159, 0.35); }
+.staff-search input:focus-visible { outline: none; box-shadow: none; }
+.staff-search input::-webkit-search-cancel-button { display: none; }
+.portal-filter { flex: 1 1 180px; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.portal-filter select { width: 100%; min-width: 0; min-height: 44px; }
+.portal-filter label { white-space: nowrap; }
+@media (max-width: 479px) {
+  .portal-filter { flex-direction: column; align-items: stretch; gap: 4px; }
+}
+.portal-registry-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+
+/* Registry loading states. */
+.portal-grid-stale { opacity: 0.6; transition: opacity 0.15s; }
+.portal-skeleton {
+  height: 220px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  background-size: 200% 100%; animation: portal-shimmer 1.4s ease-in-out infinite;
+}
+.portal-skeleton.short { height: 1.2rem; border-radius: 6px; }
+@keyframes portal-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.ticket-card:hover { border-color: rgba(123, 216, 159, 0.45) !important; }
+
+/* Polite confirmations after a save. */
+.portal-toast {
+  position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 60;
+  width: max-content; max-width: calc(100vw - 32px);
+}
+.portal-toast-inner {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.35rem 0.35rem 1rem; border-radius: 12px;
+  background: #0f2a1d; border: 1px solid rgba(74, 222, 128, 0.45); color: #dcfce7; font-size: 0.88rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Dossier: one scroll area (the body); header, banner and footer stay put. */
+.officer-portal dialog.dossier-dialog { overflow: hidden; background: transparent; max-height: 92vh; }
+.dossier-container { max-height: 92vh; }
+.dossier-head, .dossier-foot, .dossier-mobile-bar, .dossier-banner { flex: none; }
+.dossier-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.dossier-layout { display: grid; gap: 1.25rem; align-items: start; }
+.dossier-main, .dossier-actions { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.dossier-mobile-bar {
+  display: flex; gap: 0.5rem; padding: 0.6rem 1rem; border-top: 1px solid rgba(255, 255, 255, 0.1); background: rgba(7, 18, 36, 0.98);
+}
+.dossier-mobile-bar button { flex: 1 1 0; }
+.dossier-foot-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.dossier-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.dossier-history li { border-left: 2px solid rgba(255, 255, 255, 0.12); padding: 0.1rem 0 0.1rem 0.85rem; }
+@media (min-width: 1024px) {
+  .officer-portal dialog.dossier-dialog { width: min(1200px, 96vw); }
+  .dossier-layout { grid-template-columns: minmax(0, 1fr) 340px; }
+  .dossier-mobile-bar { display: none; }
+}
+/* Sticky only where both action forms fit in the scroll area; on a shorter
+ * laptop screen a stuck panel would hide the note composer (and its focus). */
+@media (min-width: 1024px) and (min-height: 900px) {
+  .dossier-actions { position: sticky; top: 0; }
+}
+@media (max-width: 640px) {
+  .officer-portal dialog.dossier-dialog {
+    width: 100vw; max-width: 100vw !important; height: 100dvh; max-height: 100dvh !important; margin: 0;
+  }
+  .dossier-container { border-radius: 0 !important; border: 0 !important; height: 100%; max-height: 100dvh; }
+  .dossier-head, .dossier-body, .dossier-foot { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .dossier-body { padding-top: 1rem !important; }
+  .dossier-foot-actions { width: 100%; }
+  .dossier-foot-actions > button { flex: 1 1 0; justify-content: center; }
+}
+
+/* Dossier documents: previews scale to the card; only the list and risk print. */
+.doc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; }
+.doc-details summary {
+  min-height: 44px; display: flex; align-items: center; gap: 0.4rem; cursor: pointer; border-radius: 8px;
+  font-size: 0.84rem; font-weight: 600; color: #cbd5e1; list-style: none;
+}
+/* display:flex drops the native disclosure marker, so draw the caret here. */
+.doc-details summary::-webkit-details-marker { display: none; }
+.doc-details summary::before { content: "▸"; content: "▸" / ""; color: #94a3b8; }
+.doc-details[open] > summary::before { content: "▾"; content: "▾" / ""; }
+.doc-details summary:focus-visible { outline: 2px solid #7bd89f; outline-offset: 2px; }
+.doc-checks { list-style: none; margin: 0.25rem 0 0; padding: 0; display: grid; gap: 0.5rem; font-size: 0.8rem; line-height: 1.45; }
+.doc-checks li { display: flex; gap: 0.55rem; align-items: flex-start; }
+.doc-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); gap: 0.5rem 1rem; margin: 0; }
+.doc-fields dt { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #94a3b8; }
+.doc-fields dd { margin: 0.1rem 0 0; font-size: 0.85rem; color: #e5e7eb; overflow-wrap: anywhere; }
+.doc-toggles { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dossier-documents button:is([aria-expanded="true"], [aria-pressed="true"]) { border-color: #8ae0b7 !important; background: rgba(138, 224, 183, 0.12) !important; }
+.doc-file { display: grid; gap: 0.25rem; justify-items: start; min-width: 0; }
+.doc-file img { display: block; max-width: 100%; height: auto; border-radius: 8px; background: #fff; }
+.doc-file iframe { width: 100%; height: min(70vh, 640px); min-height: 320px; border: 0; border-radius: 8px; background: #fff; }
+.doc-faces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+.doc-faces figure { margin: 0; min-width: 0; }
+.doc-faces figcaption { font-size: 0.75rem; color: #94a3b8; }
+.doc-decisions { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; min-width: 0; }
+.doc-decisions legend { padding: 0; margin-bottom: 0.35rem; }
+.doc-decisions label {
+  min-height: 44px; display: inline-flex; align-items: center; gap: 0.45rem; padding: 0 0.85rem; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; background: rgba(255, 255, 255, 0.04);
+  color: #e5e7eb; font-size: 0.84rem; font-weight: 600;
+}
+.doc-decisions label:has(input:checked) { border-color: #8ae0b7; background: rgba(138, 224, 183, 0.12); }
+.doc-decisions input { width: 18px; height: 18px; margin: 0; accent-color: #8ae0b7; }
+@media (max-width: 479px) {
+  .doc-toggles > button, .doc-decisions label { flex: 1 1 100%; }
+}
+
+/* Print: a header with provenance and a confidentiality notice. */
+.print-only { display: none; }
+@page { size: A4; margin: 12mm; }
+@media print {
+  /* Undo the screen-only clipping above; the dossier flows across pages. */
+  .officer-portal dialog.dossier-dialog[open] {
+    overflow: visible !important; width: 100% !important; height: auto !important; max-height: none !important; background: white !important;
+  }
+  .officer-portal dialog.dossier-dialog[open] .dossier-container { height: auto !important; border: 0 !important; }
+  .officer-portal dialog.dossier-dialog[open] .print-only { display: block !important; }
+  .officer-portal dialog.dossier-dialog[open] .dossier-body > .dossier-layout { display: block !important; padding: 0 !important; margin: 0 !important; break-inside: auto !important; }
+  .officer-portal dialog.dossier-dialog[open] .dossier-main > * { margin-bottom: 3mm; break-inside: avoid-page; }
+  .officer-portal dialog.dossier-dialog[open] .portal-toast,
+  .officer-portal dialog.dossier-dialog[open] .dossier-banner,
+  .officer-portal dialog.dossier-dialog[open] .doc-screen-only { display: none !important; }
+  .officer-portal dialog.dossier-dialog[open] .doc-list > li { break-inside: avoid; }
+  .officer-portal .print-header { border-bottom: 1px solid #111; padding-bottom: 2mm; margin-bottom: 3mm; font-size: 9pt; }
+}

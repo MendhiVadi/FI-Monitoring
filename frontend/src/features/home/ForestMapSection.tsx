@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { geoMercator, geoPath } from "d3-geo";
 import { FOREST_STATES, type ForestState } from "./forestStates";
 import { LAND_USE_STOPS, dominantLandUse, landUseColor, type LandUseMix } from "./landUse";
@@ -32,18 +32,41 @@ function formatKm2(n: number) {
 // Normal document-flow section (not part of the pinned 3D canvas) revealed
 // once the globe's zoom-into-India sequence hands off. Shows India's top
 // forest-cover states as markers on a map, plus the full dataset as an
-// accessible table — hovering either a marker or a row highlights both.
+// accessible table — hovering, focusing or tapping either a marker or a row
+// highlights both.
 export function ForestMapSection() {
   const [indiaGeo, setIndiaGeo] = useState<GeoJSON.FeatureCollection | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const sectionRef = useRef<HTMLElement>(null);
 
+  // The section sits below the multi-screen globe intro, so the boundary file
+  // is fetched as it approaches the viewport rather than competing with the
+  // hero's 3D bundle and texture on first load.
   useEffect(() => {
     let cancelled = false;
-    fetchIndiaGeo().then((geo) => {
-      if (!cancelled) setIndiaGeo(geo);
-    });
+    const load = () =>
+      fetchIndiaGeo().then((geo) => {
+        if (!cancelled) setIndiaGeo(geo);
+      });
+    const node = sectionRef.current;
+    if (indiaGeoCache || !node || typeof IntersectionObserver === "undefined") {
+      load();
+      return () => {
+        cancelled = true;
+      };
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        observer.disconnect();
+        load();
+      },
+      { rootMargin: "800px 0px" }
+    );
+    observer.observe(node);
     return () => {
       cancelled = true;
+      observer.disconnect();
     };
   }, []);
 
@@ -90,50 +113,52 @@ export function ForestMapSection() {
   );
 
   return (
-    <section
-      style={{
-        padding: "5rem 1.5rem",
-        maxWidth: 1100,
-        margin: "0 auto",
-      }}
-    >
-      <style>{`
-        .fw-map-grid {
-          display: grid;
-          grid-template-columns: minmax(280px, 480px) 1fr;
-          gap: 3rem;
-          align-items: start;
-        }
-        @media (max-width: 860px) {
-          .fw-map-grid { grid-template-columns: 1fr; }
-        }
-        .fw-table-scroll { overflow-x: auto; }
-        .fw-table-scroll table { min-width: 480px; }
-      `}</style>
-
-      <h2 style={{ fontSize: "1.75rem", marginBottom: "0.5rem" }}>India's Forest Cover</h2>
-      <p style={{ opacity: 0.75, marginBottom: "1.5rem", maxWidth: 640 }}>
-        The states carrying India's largest forest cover, colored by their mock
-        land-use mix. Hover a marker or a row for details.
+    <section ref={sectionRef} className="fw-section" aria-labelledby="fw-title">
+      <h2 id="fw-title">Land-use context: illustrative forest cover</h2>
+      <p className="fw-intro">
+        Illustrative state-level forest cover and land-use mix provide background
+        context. These are not property boundaries or verified dispute records.
+        Tap, hover or tab to a marker or row for details.
       </p>
 
       <LandUseLegend />
 
-      <div className="fw-map-grid" style={{ marginTop: "2rem" }}>
+      <div className="fw-map-grid">
         <div>
+          {/* A group, not role="img": an image role would hide the focusable
+              markers inside it from assistive technology. */}
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            width="100%"
-            style={{ maxWidth: WIDTH, display: "block" }}
+            className="fw-map"
+            role="group"
+            aria-labelledby="fw-title"
           >
             {statePaths.map((d, i) => (
-              <path key={i} d={d} fill="#0d2818" stroke="#2f9e64" strokeWidth={1} />
+              <path key={i} d={d} fill="#0d2818" stroke="#2f9e64" strokeWidth={1} aria-hidden="true" />
             ))}
             {markers.map(({ state: s, x, y, fill }) => {
               const r = 6 + (s.forestCoverKm2 / maxCover) * 20;
               const isHovered = hovered === s.state;
               return (
-                <g key={s.state}>
+                <g
+                  key={s.state}
+                  className="fw-marker"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${s.state}: ${formatKm2(s.forestCoverKm2)} forest cover`}
+                  // Hover, focus and tap all highlight the same state, so the
+                  // label and table row are reachable by keyboard and touch.
+                  onMouseEnter={() => setHovered(s.state)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(s.state)}
+                  onBlur={() => setHovered(null)}
+                  onClick={() => setHovered(s.state)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" && e.key !== " ") return;
+                    e.preventDefault();
+                    setHovered(s.state);
+                  }}
+                >
                   <circle
                     cx={x}
                     cy={y}
@@ -142,9 +167,6 @@ export function ForestMapSection() {
                     fillOpacity={isHovered ? 0.95 : 0.75}
                     stroke={isHovered ? "white" : "rgba(255,255,255,0.4)"}
                     strokeWidth={isHovered ? 2 : 1}
-                    style={{ cursor: "pointer", transition: "fill-opacity 0.15s" }}
-                    onMouseEnter={() => setHovered(s.state)}
-                    onMouseLeave={() => setHovered(null)}
                   />
                   {isHovered && (
                     <text
@@ -154,6 +176,7 @@ export function ForestMapSection() {
                       fill="white"
                       fontSize={13}
                       fontWeight={600}
+                      aria-hidden="true"
                     >
                       {s.state}
                     </text>
@@ -165,12 +188,12 @@ export function ForestMapSection() {
         </div>
 
         <div className="fw-table-scroll">
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+          <table>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
-                <th style={thStyle}>State</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Forest cover</th>
-                <th style={thStyle}>Land use</th>
+              <tr>
+                <th scope="col">State</th>
+                <th scope="col" style={{ textAlign: "right" }}>Forest cover</th>
+                <th scope="col">Land use</th>
               </tr>
             </thead>
             <tbody>
@@ -222,7 +245,7 @@ function LandUseBar({ mix }: { mix: LandUseMix }) {
   const dominant = dominantLandUse(mix);
   return (
     <div>
-      <div style={{ display: "flex", height: 8, borderRadius: 999, overflow: "hidden", minWidth: 140 }}>
+      <div className="fw-landuse-bar">
         {LEGEND_CATEGORIES.map((c) => (
           <div
             key={c}
@@ -238,7 +261,9 @@ function LandUseBar({ mix }: { mix: LandUseMix }) {
   );
 }
 
-function ForestRow({
+// Memoised: a hover changes `isHovered` for at most two rows, so the rest of
+// the table (and each row's land-use bar) skips re-rendering.
+const ForestRow = memo(function ForestRow({
   state,
   isHovered,
   onHover,
@@ -249,23 +274,19 @@ function ForestRow({
 }) {
   return (
     <tr
+      className={`fw-row${isHovered ? " fw-row--active" : ""}`}
+      tabIndex={0}
       onMouseEnter={() => onHover(state.state)}
       onMouseLeave={() => onHover(null)}
-      style={{
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-        background: isHovered ? "rgba(74,222,128,0.1)" : "transparent",
-        transition: "background 0.15s",
-        cursor: "default",
-      }}
+      onFocus={() => onHover(state.state)}
+      onBlur={() => onHover(null)}
+      onClick={() => onHover(state.state)}
     >
-      <td style={tdStyle}>{state.state}</td>
-      <td style={{ ...tdStyle, textAlign: "right" }}>{formatKm2(state.forestCoverKm2)}</td>
-      <td style={tdStyle}>
+      <td>{state.state}</td>
+      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{formatKm2(state.forestCoverKm2)}</td>
+      <td>
         <LandUseBar mix={state.landUse} />
       </td>
     </tr>
   );
-}
-
-const thStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", opacity: 0.7, fontWeight: 600 };
-const tdStyle: React.CSSProperties = { padding: "0.6rem 0.75rem" };
+});

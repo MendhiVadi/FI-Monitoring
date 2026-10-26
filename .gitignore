@@ -11,10 +11,37 @@ dist/
 .firebase/
 firebase-debug.log
 firestore-debug.log
+# Emulator and npm debug logs can capture request bodies (phones, narratives).
+*.log
 *.local
+
+# Credentials that must never be committed. google-services.json is not needed:
+# the Android app is a WebView shell that uses the Firebase JS SDK.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+service-account*.json
+*-firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
+
+# Signed release output; frontend/android/.gitignore already covers build/.
+/frontend/android/app/release/
+*.apk
+*.aab
 .vestige/
 .vestige-fresh/
 .vestige*/
 .codex/
+# Chat attachments (screenshots) are tool scratch and may show personal data.
+.codex-remote-attachments/
+.claude/scheduled_tasks.lock
+# Obsidian per-user UI state churns on every open; the notes are what matter.
+vault/.obsidian/workspace*.json
+vault/.trash/
 Read-Only-Folder/
 functions/.dispute-deploy/
+
+/.local-whatsapp-test/

@@ -7,3 +7,6 @@ export const TICKET_STATUSES = {
 } as const;
 
 export type TicketStatus = keyof typeof TICKET_STATUSES;
+
+// A case in one of these states is closed: its documents start the retention clock.
+export const TERMINAL_STATUSES: readonly string[] = ["resolved", "rejected"];

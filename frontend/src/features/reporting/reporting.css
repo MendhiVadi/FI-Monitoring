@@ -1,0 +1,85 @@
+/* Report flow: page gutter, buttons, form structure and print. Inline styles
+   in reporting.styles.ts stay for plain layout; anything needing a state,
+   media query or print rule lives here. */
+.report-page { min-height: 70vh; max-width: 700px; margin: 0 auto; padding: 8rem clamp(1rem, 4vw, 2rem) 4rem; overflow-wrap: anywhere; }
+.report-page h1:focus { outline: none; }
+.report-page :focus-visible { outline: 3px solid #8ae0b7; outline-offset: 2px; }
+.report-page a { color: #8ae0b7; }
+
+.report-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.report-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: .8rem 1.4rem; border-radius: 999px; border: 1px solid transparent; background: #8ae0b7; color: #09231a; font: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; text-align: center; text-decoration: none; }
+.report-btn:hover:not(:disabled) { background: #a7ebc9; }
+.report-btn:disabled { background: #26332f; color: #b7c4bd; border-color: #4b5a53; cursor: not-allowed; }
+.report-btn[aria-busy="true"] { cursor: progress; }
+.report-btn--secondary { background: transparent; color: #8ae0b7; border-color: #8ae0b7; }
+.report-btn--secondary:hover:not(:disabled) { background: rgba(138, 224, 183, .12); }
+.report-btn--secondary:disabled { background: transparent; }
+.report-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
+@media (max-width: 420px) { .report-actions > .report-btn { flex: 1 1 100%; } }
+.report-link-btn { min-height: 44px; padding: 0 .25rem; background: none; border: none; color: #8ae0b7; font: inherit; text-decoration: underline; cursor: pointer; }
+.report-link-btn:disabled { color: #9aa7a0; cursor: not-allowed; }
+
+.report-fieldset { border: 0; padding: 0; margin: 0 0 1.5rem; min-width: 0; }
+.report-legend { padding: 0; margin-bottom: .75rem; font-size: 1.15rem; font-weight: 700; color: #eaf7f0; }
+.report-field { margin-bottom: 1rem; }
+.report-field input[aria-invalid="true"], .report-field select[aria-invalid="true"], .report-field textarea[aria-invalid="true"] { border-color: #f87171 !important; }
+.report-required, .report-optional { font-weight: 400; font-size: .85rem; color: #b8c4cc; }
+.report-hint { margin: 0 0 .4rem; font-size: .85rem; line-height: 1.5; color: #b8c4cc; }
+.report-hint--after { margin: .35rem 0 0; }
+.report-field-error { margin: .35rem 0 0; font-size: .85rem; color: #fca5a5; font-weight: 600; }
+.report-check { display: flex; gap: .6rem; align-items: flex-start; min-height: 44px; padding: .5rem 0; line-height: 1.5; }
+.report-check input { width: 1.25rem; height: 1.25rem; margin: .15rem 0 0; flex: none; accent-color: #8ae0b7; }
+.report-check input:disabled + span { color: #9aa7a0; }
+
+.report-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 0 1rem; }
+.phone-row { display: grid; grid-template-columns: minmax(0, 8.5rem) minmax(0, 1fr); gap: .75rem; }
+@media (max-width: 400px) { .phone-row { grid-template-columns: 1fr; } }
+
+/* Document uploads (DocumentsSection). Status is never colour alone: each
+   state also has its own words. */
+.report-docs-intro { margin-bottom: 1rem; padding: .75rem .9rem; border-radius: var(--radius-md); background: var(--surface-raised); line-height: 1.5; }
+.report-docs-intro:focus { outline: none; }
+.report-docs-intro:focus-visible { outline: 3px solid var(--focus-ring); }
+.report-doc-kind { margin-bottom: .75rem; padding: .9rem 1rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--surface); }
+.report-doc-kind[data-invalid="true"] { border-color: var(--danger); }
+.report-doc-title { margin: 0 0 .3rem; font-size: 1rem; line-height: 1.4; }
+.report-doc-files { list-style: none; margin: .5rem 0 .75rem; padding: 0; }
+.report-doc-file { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .75rem; padding: .25rem 0; border-top: 1px solid var(--border-subtle); }
+.report-doc-file:last-child { border-bottom: 1px solid var(--border-subtle); }
+.report-doc-name { flex: 1 1 12rem; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.report-doc-size, .report-doc-status { font-size: .85rem; color: #b8c4cc; }
+.report-doc-status[data-state="done"] { color: var(--accent-text); font-weight: 600; }
+.report-doc-status[data-state="error"] { color: #fca5a5; font-weight: 600; }
+.report-doc-messages { flex-basis: 100%; margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .85rem; line-height: 1.5; color: #fde68a; }
+.report-doc-wide { flex-basis: 100%; margin: 0 0 .4rem; }
+@media (max-width: 420px) { .report-doc-kind > .report-btn { width: 100%; } }
+
+.report-error-summary { margin: 0 0 1.5rem; padding: 1rem; border: 2px solid #f87171; border-radius: 12px; background: rgba(239, 68, 68, .1); }
+.report-error-summary h2 { margin: 0 0 .5rem; font-size: 1.05rem; color: #fecaca; }
+.report-error-summary ul { margin: 0; padding-left: 1.2rem; line-height: 1.8; }
+.report-error-summary a { color: #fecaca; }
+
+.report-note { margin-top: 1.5rem; padding: 1rem; border: 1px solid rgba(138, 224, 183, .35); border-radius: 12px; background: rgba(138, 224, 183, .06); line-height: 1.6; }
+.report-note h2 { margin: 0 0 .5rem; font-size: 1.05rem; }
+.report-note ul { margin: .25rem 0 .5rem; padding-left: 1.2rem; }
+.report-note p { margin: .25rem 0; }
+.report-warning { padding: .75rem .9rem; border: 1px solid #fbbf24; border-radius: 10px; background: rgba(251, 191, 36, .1); color: #fde68a; line-height: 1.5; }
+.report-timer { margin: .75rem 0 0; font-size: .9rem; color: #b8c4cc; }
+
+.report-expiry-banner { position: sticky; bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 5; display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; margin-top: 1.5rem; padding: .9rem 1rem; border: 1px solid #fbbf24; border-radius: 12px; background: #1f1a0b; color: #fde68a; box-shadow: 0 6px 24px #0008; }
+.report-expiry-banner p { margin: 0; flex: 1 1 14rem; }
+
+.report-confirmation h2 { scroll-margin-top: 7rem; }
+.report-confirmation h2:focus { outline: none; }
+.report-reference { display: block; margin: .5rem 0 .75rem; padding: .75rem 1rem; border-radius: 10px; background: #071126; border: 1px solid rgba(255, 255, 255, .2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: clamp(1.1rem, 5vw, 1.5rem); letter-spacing: .04em; word-break: break-all; user-select: all; }
+.report-confirmation ol { padding-left: 1.3rem; line-height: 1.7; }
+
+@media print {
+  body:has(.report-confirmation) { background: #fff !important; color: #111 !important; }
+  body:has(.report-confirmation) header, body:has(.report-confirmation) footer, body:has(.report-confirmation) .no-print { display: none !important; }
+  .report-page:has(.report-confirmation) { padding: 0; min-height: 0; }
+  .report-confirmation, .report-confirmation * { color: #111 !important; background: transparent !important; box-shadow: none !important; }
+  .report-confirmation { border: 1px solid #555 !important; }
+  .report-reference { border: 1px solid #555 !important; }
+}

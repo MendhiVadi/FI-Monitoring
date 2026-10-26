@@ -2,44 +2,21 @@ import { Link } from "react-router-dom";
 
 // Closing landing-page section: points at the WhatsApp ticketing flow that
 // backs /report, so the page ends with a clear call to action rather than
-// just trailing off into the footer.
+// just trailing off into the footer. The action uses the same label and
+// primary button style as the hero and #land-actions entry points.
 export function WhatsAppCta() {
   return (
-    <section
-      style={{
-        background: "#0d2818",
-        padding: "4rem 1.5rem",
-        textAlign: "center",
-      }}
-    >
-      <h2 style={{ fontSize: "1.5rem", marginBottom: "0.75rem" }}>Seeing something in the field?</h2>
-      <p style={{ opacity: 0.75, maxWidth: 480, margin: "0 auto 1.5rem" }}>
-        Use the reporting form to describe the land dispute and select its location. Choose whether to receive WhatsApp updates.
+    <section className="home-cta" aria-labelledby="home-cta-title">
+      <h2 id="home-cta-title">Have a land dispute to report?</h2>
+      <p>
+        Use the reporting form to describe the land dispute and select its location. You verify your phone with a WhatsApp code; status updates are optional.
       </p>
-      <Link
-        to="/report"
-        style={{
-          display: "inline-block",
-          background: "#2f9e64",
-          color: "white",
-          padding: "0.75rem 1.75rem",
-          borderRadius: 999,
-          textDecoration: "none",
-          fontWeight: 600,
-        }}
-      >
-        Raise a Dispute
+      <Link className="home-button" to="/report">
+        Report a dispute
       </Link>
-      <p style={{ marginTop: "1rem", fontSize: "0.8rem", opacity: 0.6 }}>
-        Before submitting, review our{" "}
-        <Link to="/privacy-policy" style={{ color: "inherit", textDecoration: "underline" }}>
-          Privacy Policy
-        </Link>{" "}
-        and{" "}
-        <Link to="/terms-of-use" style={{ color: "inherit", textDecoration: "underline" }}>
-          Terms of Use
-        </Link>
-        .
+      <p className="home-cta-legal">
+        Before submitting, review our <Link to="/privacy-policy">Privacy Policy</Link> and{" "}
+        <Link to="/terms-of-use">Terms of Use</Link>.
       </p>
     </section>
   );

@@ -1,0 +1,89 @@
+/* Staff sign-in page. Inline styles (./login.styles.ts) carry the look; this
+   file holds what they cannot: focus rings, hover states and phone spacing. */
+.login-page { padding: 6.5rem 1.5rem 4rem; }
+.login-header { padding: 1.25rem 1.75rem; }
+.login-card { padding: 2rem; }
+
+.login-page :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #7bd89f;
+  outline-offset: 2px;
+}
+.login-page input:not([type="checkbox"]):focus-visible {
+  box-shadow: 0 0 0 3px rgba(123, 216, 159, 0.35);
+}
+/* !important beats the inline border; an invalid field keeps its red border. */
+.login-page input:not([type="checkbox"]):not([aria-invalid="true"]):focus-visible {
+  border-color: #7bd89f !important;
+}
+.login-page button:not([aria-disabled="true"]):hover { filter: brightness(1.12); }
+.login-page button[aria-disabled="true"] { cursor: not-allowed; }
+
+.login-link-btn {
+  min-height: 44px;
+  padding: 0.5rem 0;
+  background: none;
+  border: none;
+  color: #7bd89f;
+  font-size: 0.84rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Show/Hide sits inside the password input, 44px square, 4px from the edge. */
+.login-reveal-btn {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.6rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* margin: 0 while empty, or the default <p> margin leaves a 1em gap that
+   jumps when Caps Lock toggles. */
+.login-caps { margin: 0; }
+.login-caps:not(:empty) {
+  margin-top: 0.4rem;
+  color: #fde68a;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.login-checking {
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.login-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 480px) {
+  .login-page { padding: 5.5rem 16px 3rem; }
+  .login-header { padding: 1rem; }
+  .login-card { padding: 1.25rem 1rem; }
+  .login-session-actions > button { flex: 1 1 100%; }
+}

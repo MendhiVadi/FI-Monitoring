@@ -1,22 +1,36 @@
-# Forest Watch — Canonical Hackathon Brief
+# Land Dispute — Canonical Project Brief
 
 This file is the single source of truth for every AI tool working in this
-workspace. The canonical workspace is `C:\Users\medha\Desktop\Existing Projects\Land Dispute`,
-and the application source is in `frontend/`.
+workspace. The canonical workspace is `C:\Users\medha\Desktop\Hackathons\Land Dispute`,
+and the application source is in `frontend/`. Project memory for humans and agents
+is the Obsidian vault in `vault/` (start at `vault/00-Index.md`).
 
 Do not use `Newsletter-Platform` as context, a data source, or a destination for
 this project.
 
-## Problem statement
+## Scope
 
-Build an AI-powered decision-support system for monitoring implementation of
-India's Forest Rights Act (FRA). FRA claims, approvals, and land-use records are
-fragmented across states, making progress difficult to monitor and anomalies
-difficult to identify.
+There is no fixed problem statement. Since 2026-10-22 the owner reuses this
+codebase for several purposes (hackathons, demos, possible pilots), so treat it as
+a reusable land-dispute reporting and staff-review platform rather than an answer
+to one brief. Do not add judging criteria or a single problem statement back; a
+purpose-specific brief belongs in its own note in `vault/`.
 
-## Minimum hackathon acceptance criteria
+The project shifted from forest disputes to broader land disputes on 2026-09-16.
+The public product name is **Land Dispute**. Its primary
+flow is location-based land-grievance reporting, verified submission and staff
+review/follow-up. Do not imply that submitting a report creates an official legal
+filing or that the system decides ownership.
 
-The demo must make these three capabilities obvious to a judge:
+The existing Forest Rights Act (FRA) monitoring demonstration remains a supporting
+land-rights example: it illustrates fragmented claim records, delayed claims and
+land-record mismatches. The illustrative forest/land-use map is context, not a
+property survey or a verified dispute layer. Existing Firebase/Vercel resource
+names and URLs retain their historical Forest Watch identifiers.
+
+## FRA demonstration module
+
+Preserve these three implemented capabilities within the supporting FRA demo:
 
 1. A WebGIS-style map showing mock FRA claim data by district.
 2. An anomaly layer that flags cases such as delayed claims and mismatched land
@@ -39,10 +53,15 @@ The build may exceed the minimum brief with:
 - dataset provenance, accessibility, privacy, and fair-use information;
 - richer district drill-downs, trends, prioritization, and explainable alerts.
 
-Extras support the FRA monitoring workflow; they must not replace the three
-minimum acceptance criteria.
+The public landing page prioritizes land-dispute reporting and staff review;
+the existing FRA demonstration remains accessible and clearly labelled.
 
 ## Status
+
+**Land Dispute branding and scroll refinement released on 2026-09-16.**
+The public landing page now prioritizes land-grievance reporting, uses a short
+globe intro with synchronized motion and persistent actions, and provides a
+reduced-motion fallback. See `docs/LANDING_SCROLL_PLAN.md` and `docs/DEPLOYMENT.md`.
 
 **Review fixes and FRA demonstration released on 2026-09-16.**
 See `docs/REVIEW_FIXES.md` for the issue list, verification and release limits.
@@ -56,7 +75,8 @@ official record or as a fallback in the staff registry.
 `frontend/` — React, TypeScript, Vite:
 
 - React Three Fiber globe plus world and India map scenes, lazy-loaded;
-- scroll-driven GSAP transitions;
+- a short, native-scroll globe intro with synchronized GSAP visual progress,
+  direct reporting/skip links and reduced-motion fallback;
 - placeholder world-region and Indian-state tree-density data (clearly labelled);
 - officer registry backed by real records only, with paginated search, full-registry
   counts and explicit refresh; the selected dossier has a live subscription;
@@ -84,7 +104,19 @@ official record or as a fallback in the staff registry.
 - `whatsappWebhook` — signed delivery receipts and STOP handling;
 - creation/update notification triggers — opt-in checks, event deduplication,
   receipt tracking and conservative handling of uncertain sends;
-- `purgeExpiredOtps` — hourly, race-safe cleanup of temporary server state.
+- `purgeExpiredOtps` — hourly, race-safe cleanup of temporary server state;
+- `uploadDisputeDocument` / `removeDisputeDocument` — case-type document uploads
+  (Aadhaar, PAN, deeds, land records…) checked against the verification grant
+  without spending it, stored in Firebase Storage and screened for signs of
+  forgery before the reply; `submitDispute` enforces the required kinds;
+- `getCaseDocumentFile` / `reviewCaseDocument` — officer preview and an audited
+  Accept / Reject / Request re-upload decision per document;
+- `purgeExpiredDocuments` — daily deletion of unsent uploads (2 h) and of case
+  documents 90 days after the case closes.
+
+Documents are a mock-up decision (2026-10-23): Aadhaar copies and numbers are
+stored and scanned. Screening only flags documents for staff and never rejects a
+report; reporters never see risk levels. See `vault/Documents-and-Screening.md`.
 
 `frontend/api/maps.js` — Vercel serverless proxy to fixed map upstreams, with an
 origin allow-list and per-IP limits. Geocoding delegates to `geocodePlace` so
@@ -93,7 +125,8 @@ multiple proxy instances share the upstream rate limit.
 Security model: `firestore.rules` allows ticket reads to allow-listed officers
 only; all writes go through Cloud Functions on the Admin SDK. `disputeOtps`,
 `otpSendLimits`, `reporterLimits`, verification grants, retry receipts, notification
-state and map service state are closed to every client.
+state and map service state are closed to every client. `caseDocuments` is
+readable by allow-listed officers only; `storage.rules` deny all client access.
 
 ## Remaining product and release work
 
@@ -105,8 +138,12 @@ state and map service state are closed to every client.
   boundaries, official records, trends and optional LLM explanations remain future
   integration work. See `docs/FRA_DEMO.md` for schema and provenance.
 - Confirm the real service operator, support channel and case-retention policy
-  before public launch. Temporary-state cleanup is implemented; case records have
-  no automatic deletion period configured.
+  before public launch. Temporary-state cleanup is implemented and uploaded
+  documents are deleted 90 days after a case closes; the case records themselves
+  have no automatic deletion period configured.
+- Document screening needs UIDAI's Secure QR certificate at
+  `functions/assets/uidai/uidai-secure-qr.pem` before the QR signature check can
+  run, and has only been tested with synthetic data (see `functions/assets/README.md`).
 - Hosting, public routes, geocoding and signed-out access controls passed release
   checks. Live signed-in workflows, OTP/message delivery and Android still need
   their stated acceptance checks.

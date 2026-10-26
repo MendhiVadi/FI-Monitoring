@@ -1,30 +1,25 @@
-import { StaticPage } from "../../shared/ui/StaticPage";
+import { Link } from "react-router-dom";
+import { ExternalLink, LegalPage } from "./LegalPage";
+import { SITE } from "./siteInfo";
 
 export function DatasetLinks() {
   return (
-    <StaticPage title="Dataset Links">
+    <LegalPage title="Dataset Links">
       <p>
-        Forest Watch combines real geographic boundary data with clearly
+        {SITE.name} combines real geographic boundary data with clearly
         labelled synthetic FRA claim records. This page lists where each
         layer comes from.
       </p>
 
-      <h2 style={h2}>World and country boundaries</h2>
+      <h2>World and country boundaries</h2>
       <p>
         Country outlines used in the globe and world map views are built from{" "}
-        <a
-          href="https://github.com/topojson/world-atlas"
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "inherit" }}
-        >
-          world-atlas
-        </a>{" "}
+        <ExternalLink href="https://github.com/topojson/world-atlas">world-atlas</ExternalLink>{" "}
         (Natural Earth data packaged as TopoJSON), converted to GeoJSON at
         build time.
       </p>
 
-      <h2 style={h2}>Indian state and district boundaries</h2>
+      <h2>Indian state and district boundaries</h2>
       <p>
         The FRA demonstration includes Mandla, Pune and Koraput from geoBoundaries
         gbOpen IND ADM2, representing 2021 boundaries (release 9469f09; boundary ID
@@ -35,8 +30,9 @@ export function DatasetLinks() {
         are illustrative placeholders, not official statistics.
       </p>
 
-      <p><a href="https://www.geoboundaries.org/api/current/gbOpen/IND/ADM2/" target="_blank" rel="noreferrer">geoBoundaries metadata</a> · <a href="/geo/fra-demo-provenance.json">Pinned source and attribution</a> · <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">ODbL 1.0 licence</a></p>
-      <h2 style={h2}>FRA claim records</h2>
+      {/* The provenance file is a static asset, not an app route, so it stays a plain link. */}
+      <p><ExternalLink href="https://www.geoboundaries.org/api/current/gbOpen/IND/ADM2/">geoBoundaries metadata</ExternalLink> · <a href="/geo/fra-demo-provenance.json">Pinned source and attribution</a> · <ExternalLink href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0 licence</ExternalLink></p>
+      <h2>FRA claim records</h2>
       <p>
         All claim, approval, and land-record data shown on the map, anomaly
         layer, and decision-support panel is synthetic mock data authored for
@@ -46,23 +42,17 @@ export function DatasetLinks() {
         not statutory standards. Explanations use the rule and displayed evidence
         values. The records are not derived
         from any real FRA filing. See the{" "}
-        <a href="/fair-use-policy" style={{ color: "inherit" }}>
-          Fair Use Policy
-        </a>{" "}
+        <Link to="/fair-use-policy">Fair Use Policy</Link>{" "}
         for how this data may be used.
       </p>
 
-      <h2 style={h2}>Suggesting a dataset</h2>
+      <h2>Suggesting a dataset</h2>
       <p>
         If you know of an open dataset we should use for district boundaries
         or forest-cover figures, let us know via{" "}
-        <a href="/contact" style={{ color: "inherit" }}>
-          Contact Us
-        </a>
+        <Link to="/contact">Contact Us</Link>
         .
       </p>
-    </StaticPage>
+    </LegalPage>
   );
 }
-
-const h2: React.CSSProperties = { marginTop: "1.75rem", marginBottom: "0.5rem", fontSize: "1.1rem" };

@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 interface ErrorPageProps {
@@ -14,20 +14,34 @@ export function ErrorPage({
   message = "The page you requested does not exist or may have moved.",
   onRetry,
 }: ErrorPageProps) {
+  // A missing page is not an emergency, so the card is not an assertive alert;
+  // moving focus to the heading is what tells a screen reader where it landed.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    headingRef.current?.focus({ preventScroll: true });
+  }, []);
+
   return (
     <main style={styles.page}>
-      <section style={styles.card} role="alert" aria-live="assertive">
+      <section style={styles.card} aria-labelledby="error-page-title">
         <div style={styles.code} aria-hidden="true">{code}</div>
-        <p style={styles.eyebrow}>FOREST WATCH</p>
-        <h1 style={styles.title}>{title}</h1>
+        <p style={styles.eyebrow}>LAND DISPUTE</p>
+        <h1 id="error-page-title" ref={headingRef} tabIndex={-1} data-route-focus="" style={styles.title}>{title}</h1>
         <p style={styles.message}>{message}</p>
         <div style={styles.actions}>
           {onRetry && (
-            <button type="button" onClick={onRetry} style={styles.primaryButton}>
+            <button type="button" onClick={onRetry} className="btn btn-primary">
               Try again
             </button>
           )}
-          <Link to="/" style={styles.secondaryButton}>Return home</Link>
+          {onRetry ? (
+            <Link to="/" className="btn btn-secondary">Return home</Link>
+          ) : (
+            <>
+              <Link to="/report" className="btn btn-primary">Report a dispute</Link>
+              <Link to="/" className="btn btn-secondary">Return home</Link>
+            </>
+          )}
         </div>
       </section>
     </main>
@@ -64,7 +78,7 @@ export class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
         <ErrorPage
           code="ERROR"
           title="Something went wrong"
-          message="We couldn't complete that request. Your information has not been submitted. Please try again."
+          message="We couldn't complete that request. If you were submitting a report, look for a reference number before resubmitting."
           onRetry={this.retry}
         />
       );
@@ -77,7 +91,7 @@ export class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    padding: "7rem 1.5rem 4rem",
+    padding: "7rem 1rem 4rem",
     display: "grid",
     placeItems: "center",
     background: "radial-gradient(circle at 50% 20%, #123525 0%, #06100c 48%, #040a16 100%)",
@@ -105,25 +119,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "0.76rem",
     fontWeight: 800,
   },
-  title: { fontSize: "clamp(2rem, 7vw, 3.5rem)", lineHeight: 1.05 },
+  title: { fontSize: "clamp(2rem, 7vw, 3.5rem)", lineHeight: 1.05, overflowWrap: "anywhere" },
   message: { margin: "1rem auto 0", maxWidth: 440, opacity: 0.72, lineHeight: 1.7 },
   actions: { marginTop: "2rem", display: "flex", justifyContent: "center", flexWrap: "wrap", gap: "0.75rem" },
-  primaryButton: {
-    border: 0,
-    borderRadius: 999,
-    padding: "0.8rem 1.35rem",
-    background: "#2f9e64",
-    color: "white",
-    font: "inherit",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  secondaryButton: {
-    border: "1px solid rgba(255,255,255,0.2)",
-    borderRadius: 999,
-    padding: "0.8rem 1.35rem",
-    color: "white",
-    textDecoration: "none",
-    fontWeight: 700,
-  },
 };

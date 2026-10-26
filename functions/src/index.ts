@@ -9,3 +9,5 @@ export { notifyWhatsAppOnTicketUpdate } from "./features/whatsapp/notifications"
 export { notifyWhatsAppOnTicketCreated } from "./features/whatsapp/created";
 
 export { geocodePlace } from "./features/maps/geocode";
+export { uploadDisputeDocument, removeDisputeDocument, getCaseDocumentFile, reviewCaseDocument } from "./features/documents/handlers";
+export { purgeExpiredDocuments } from "./features/documents/cleanup";

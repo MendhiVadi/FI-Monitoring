@@ -19,6 +19,14 @@ export interface TicketMessage {
   at?: { seconds: number } | Date | string;
 }
 
+// Summary written by submitDispute; flagged counts documents screened high or altered.
+export interface TicketDocuments {
+  caseType: string;
+  count: number;
+  kinds: string[];
+  flagged: number;
+}
+
 export interface Ticket {
   revision?: number;
   noteCount?: number;
@@ -27,6 +35,8 @@ export interface Ticket {
   status: string;
   waFrom?: string;
   phoneVerified?: boolean;
+  // Reporter opted in to WhatsApp updates (only honoured when phoneVerified).
+  whatsappUpdates?: boolean;
   source?: string;
   dispute?: DisputeData;
   messages?: TicketMessage[];
@@ -34,4 +44,8 @@ export interface Ticket {
   updatedAt?: { seconds: number };
   officerNotes?: string[];
   priority?: string;
+  // Absent on cases filed before document uploads.
+  documents?: TicketDocuments;
+  // Milliseconds; set when the status becomes terminal, cleared on reopen.
+  closedAt?: number | null;
 }

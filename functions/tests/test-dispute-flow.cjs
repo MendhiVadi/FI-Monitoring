@@ -10,7 +10,7 @@ const { hasValidMetaSignature } = require('../lib/features/whatsapp/webhook.js')
 const contract = require('../lib/platform/contracts/dispute.json');
 const input = { reporterName: 'Synthetic reporter', reporterType: contract.reporterTypes[0], otherPartyName: 'Synthetic party', otherPartyType: contract.partyTypes[0], disputeType: contract.disputeTypes[0], state: 'Maharashtra', district: 'Pune', village: '', description: 'A synthetic boundary concern for testing only.', location: {latitude:18.52,longitude:73.85}, locationConfirmed:true };
 test('deployment surface includes all original functions and the new registry/geocoder', () => {
-  assert.deepEqual(Object.keys(deployed).sort(), ['requestDisputeOtp','verifyDisputeOtp','submitDispute','purgeExpiredOtps','whatsappWebhook','updateTicketStatus','addTicketNote','listTickets','notifyWhatsAppOnTicketUpdate','notifyWhatsAppOnTicketCreated','geocodePlace'].sort());
+  assert.deepEqual(Object.keys(deployed).sort(), ['requestDisputeOtp','verifyDisputeOtp','submitDispute','purgeExpiredOtps','whatsappWebhook','updateTicketStatus','addTicketNote','listTickets','notifyWhatsAppOnTicketUpdate','notifyWhatsAppOnTicketCreated','geocodePlace','uploadDisputeDocument','removeDisputeDocument','getCaseDocumentFile','reviewCaseDocument','purgeExpiredDocuments'].sort());
 });
 test('intake rejects unsupported enums, mismatched districts and overlong text', () => {
   for (const bad of [{reporterType:'Individual'}, {otherPartyType:'__proto__'}, {disputeType:'invented'}, {district:'Mandla'}, {state:'__proto__'}, {description:'x'}, {description:'x'.repeat(2001)}, {reporterName:'x'.repeat(121)}, {locationConfirmed:false}, {immediateRisk:'maybe'}, {evidenceReferences:Array(11).fill('ref')}, {evidenceReferences:['x'.repeat(121)]}]) assert.throws(() => validateDisputeInput({...input,...bad}));
@@ -46,4 +46,11 @@ test('WhatsApp payload correlates receipts and puts OTP in body and copy button'
     global.fetch=async()=>({ok:true,json:async()=>({})});
     await assert.rejects(sendWhatsAppTemplate('+12025550123','request_created',[],'test','test'),/could not be confirmed/);
   } finally {global.fetch=original;}
+});
+test('per-address quotas group IPv6 callers by /64 and keep IPv4 exact', () => {
+  const { addressBucket } = require('../lib/features/otp/identity.js');
+  assert.equal(addressBucket('192.0.2.10'), '192.0.2.10');
+  assert.equal(addressBucket('::ffff:192.0.2.10'), '192.0.2.10');
+  assert.equal(addressBucket('2001:db8:0:0:abcd::2'), addressBucket('2001:0DB8::1'));
+  assert.notEqual(addressBucket('2001:db8:0:1::1'), addressBucket('2001:db8:0:2::1'));
 });
