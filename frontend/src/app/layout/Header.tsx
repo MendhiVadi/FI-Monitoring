@@ -4,6 +4,10 @@ import { signOutStaff, useStaffSession } from "../../features/auth/staffSession"
 import { loadLogin, loadReportIssue, prefetchHeaderRoutesWhenIdle, prefetchRoute } from "../routeChunks";
 import "./layout.css";
 
+// Staff sign-in is hidden from the public header for now; staff open /login
+// directly. Set back to true to show the "Staff login" link again.
+const SHOW_STAFF_LOGIN = false;
+
 export function Header() {
   const { isStaff, ready } = useStaffSession();
   const navigate = useNavigate();
@@ -11,8 +15,9 @@ export function Header() {
 
   // Both header destinations are lazily-loaded routes, so the very first
   // click paid for the chunk download before anything rendered. Warm them
-  // once the browser goes idle instead.
-  useEffect(prefetchHeaderRoutesWhenIdle, []);
+  // once the browser goes idle instead — but not the sign-in chunk while its
+  // link is hidden, or every visitor would download it for nothing.
+  useEffect(() => { if (SHOW_STAFF_LOGIN) prefetchHeaderRoutesWhenIdle(); }, []);
 
   // The bar sits over the hero, so it stays nearly transparent at the top of
   // the page and only picks up its blur/border once content scrolls under it.
@@ -72,11 +77,11 @@ export function Header() {
                 Sign out
               </button>
             </>
-          ) : (
+          ) : SHOW_STAFF_LOGIN ? (
             <NavLink to="/login" className="site-header__link" onMouseEnter={prefetchLogin} onFocus={prefetchLogin}>
               Staff login
             </NavLink>
-          )}
+          ) : null}
         </nav>
       </div>
     </header>
