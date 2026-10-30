@@ -83,15 +83,52 @@ test('uploads bind to the verified phone, otherwise to the address bucket', () =
 });
 
 test('per-connection upload quota caps count and bytes in a rolling day', () => {
+  const now = 1_800_000_000_000, MiB = 1024 * 1024, limits = { files: 40, bytes: 60 * MiB };
+  assert.deepEqual(rules.chargeUploadQuota(undefined, now, 10, limits), { count: 1, bytes: 10, windowStartedAt: now });
+  assert.deepEqual(rules.chargeUploadQuota({ count: 3, bytes: 100, windowStartedAt: now - 1000 }, now, 10, limits), { count: 4, bytes: 110, windowStartedAt: now - 1000 });
+  assert.equal(rules.chargeUploadQuota({ count: 40, bytes: 0, windowStartedAt: now - 1000 }, now, 1, limits), null);
+  assert.ok(rules.chargeUploadQuota({ count: 39, bytes: 0, windowStartedAt: now - 1000 }, now, 1, limits));
+  assert.equal(rules.chargeUploadQuota({ count: 1, bytes: 60 * MiB - 5, windowStartedAt: now - 1000 }, now, 6, limits), null);
+  assert.ok(rules.chargeUploadQuota({ count: 1, bytes: 60 * MiB - 6, windowStartedAt: now - 1000 }, now, 6, limits));
+  assert.deepEqual(rules.chargeUploadQuota({ count: 40, bytes: 60 * MiB, windowStartedAt: now - DAY }, now, 5, limits), { count: 1, bytes: 5, windowStartedAt: now });
+  assert.deepEqual(rules.chargeUploadQuota({ count: 'x', bytes: null, windowStartedAt: now - 1 }, now, 5, limits), { count: 1, bytes: 5, windowStartedAt: now - 1 });
+});
+
+test('wave-2 upload quota defaults are 150 files and 300 MiB per connection per day', () => {
   const now = 1_800_000_000_000, MiB = 1024 * 1024;
-  assert.deepEqual(rules.chargeUploadQuota(undefined, now, 10), { count: 1, bytes: 10, windowStartedAt: now });
-  assert.deepEqual(rules.chargeUploadQuota({ count: 3, bytes: 100, windowStartedAt: now - 1000 }, now, 10), { count: 4, bytes: 110, windowStartedAt: now - 1000 });
-  assert.equal(rules.chargeUploadQuota({ count: 40, bytes: 0, windowStartedAt: now - 1000 }, now, 1), null);
-  assert.ok(rules.chargeUploadQuota({ count: 39, bytes: 0, windowStartedAt: now - 1000 }, now, 1));
-  assert.equal(rules.chargeUploadQuota({ count: 1, bytes: 60 * MiB - 5, windowStartedAt: now - 1000 }, now, 6), null);
-  assert.ok(rules.chargeUploadQuota({ count: 1, bytes: 60 * MiB - 6, windowStartedAt: now - 1000 }, now, 6));
-  assert.deepEqual(rules.chargeUploadQuota({ count: 40, bytes: 60 * MiB, windowStartedAt: now - DAY }, now, 5), { count: 1, bytes: 5, windowStartedAt: now });
-  assert.deepEqual(rules.chargeUploadQuota({ count: 'x', bytes: null, windowStartedAt: now - 1 }, now, 5), { count: 1, bytes: 5, windowStartedAt: now - 1 });
+  assert.deepEqual(rules.DEFAULT_UPLOAD_LIMITS, { files: 150, bytes: 300 * MiB });
+  assert.ok(rules.chargeUploadQuota({ count: 149, bytes: 0, windowStartedAt: now - 1000 }, now, 1));
+  assert.equal(rules.chargeUploadQuota({ count: 150, bytes: 0, windowStartedAt: now - 1000 }, now, 1), null);
+  assert.ok(rules.chargeUploadQuota({ count: 1, bytes: 300 * MiB - 6, windowStartedAt: now - 1000 }, now, 6));
+  assert.equal(rules.chargeUploadQuota({ count: 1, bytes: 300 * MiB - 5, windowStartedAt: now - 1000 }, now, 6), null);
+});
+
+test('int params fall back to their declared default when the runtime has no value', () => {
+  const { limitValue } = require('../lib/features/disputes/params.js');
+  const limits = require('../lib/platform/limits.js');
+  const expected = { otpSendsPerIpHour: 30, reportsPerIpDay: 20, uploadsPerIpDay: 150, uploadBytesPerIpDayMib: 300, statusLookupsPerIpHour: 30 };
+  for (const [name, value] of Object.entries(expected)) assert.equal(limitValue(limits[name]), value, name);
+  const fake = (value, fallback) => ({ value: () => value, options: { default: fallback } });
+  assert.equal(limitValue(fake(12, 30)), 12);
+  for (const bad of [0, -3, NaN, 1.5]) assert.equal(limitValue(fake(bad, 30)), 30);
+  assert.equal(limitValue(fake(0, undefined)), 1);
+});
+
+test('new cases carry service targets, explicit unassigned and not-overdue fields', () => {
+  const { serviceTargets } = require('../lib/features/disputes/service.js');
+  const now = 1_800_000_000_000;
+  assert.deepEqual(serviceTargets(now), { ackDueAt: now + contract.serviceTargets.acknowledgeDays * DAY,
+    resolveDueAt: now + contract.serviceTargets.resolveDays * DAY, firstActionAt: null, overdue: null });
+  assert.equal(serviceTargets(now).ackDueAt - now, 3 * DAY);
+  assert.equal(serviceTargets(now).resolveDueAt - now, 30 * DAY);
+});
+
+test('staff writes record uid, email, display name or null, and role', () => {
+  const { officerFields } = require('../lib/features/documents/service.js');
+  assert.deepEqual(officerFields({ uid: 'u1', email: 'staff@example.invalid', displayName: ' Synthetic Officer ', role: 'District officer', access: 'officer' }),
+    { officerUid: 'u1', officerEmail: 'staff@example.invalid', officerName: 'Synthetic Officer', officerRole: 'District officer' });
+  assert.deepEqual(officerFields({ uid: 'u2', email: '', access: 'admin' }), { officerUid: 'u2', officerEmail: null, officerName: null, officerRole: 'admin' });
+  assert.deepEqual(officerFields({ uid: 'u3', email: 'x@example.invalid', displayName: 42, role: '' }), { officerUid: 'u3', officerEmail: 'x@example.invalid', officerName: null, officerRole: null });
 });
 
 test('perceptual hash distance counts differing bits and never matches malformed hashes', () => {
@@ -111,7 +148,17 @@ test('review and file requests are validated before any read', () => {
   }
   assert.deepEqual(rules.validateFileRequest({ documentId: ok.documentId }), { documentId: ok.documentId, variant: 'original' });
   assert.equal(rules.validateFileRequest({ documentId: ok.documentId, variant: 'faceQr' }).variant, 'faceQr');
-  for (const variant of ['thumbnail', '__proto__', '../original']) assert.throws(() => rules.validateFileRequest({ documentId: ok.documentId, variant }), rules.DocumentInputError);
+  assert.equal(rules.validateFileRequest({ documentId: ok.documentId, variant: 'copyMove' }).variant, 'copyMove');
+  for (const variant of ['thumbnail', '__proto__', '../original', 'copy-move']) assert.throws(() => rules.validateFileRequest({ documentId: ok.documentId, variant }), rules.DocumentInputError);
+});
+
+test('every derived variant has a stored name and content type under the document prefix', () => {
+  const storage = require('../lib/features/documents/storage.js');
+  assert.equal(storage.DERIVED_NAMES.copyMove, 'copy-move.png');
+  assert.equal(storage.VARIANT_TYPES.copyMove, 'image/png');
+  for (const variant of rules.FILE_VARIANTS.filter(v => v !== 'original')) {
+    assert.ok(storage.DERIVED_NAMES[variant], variant); assert.match(storage.VARIANT_TYPES[variant], /^image\//);
+  }
 });
 
 test('closing starts the retention clock, reopening clears it, closed-to-closed keeps it', () => {
@@ -161,6 +208,50 @@ test('duplicate lookups ignore the same submission and confirm near matches by f
   }
 });
 
+function companionDb(rows) {
+  const query = filters => ({
+    where: (field, op, value) => query([...filters, [field, value]]),
+    select: () => query(filters),
+    limit: () => ({ get: async () => ({ docs: rows.filter(row => filters.every(([field, value]) => row[field] === value))
+      .map(row => ({ id: row.id, data: () => row, get: key => row[key] })) }) }),
+  });
+  return { collection: () => query([]) };
+}
+
+test('companion lookup returns the latest usable document of a kind in the same submission or case', async () => {
+  const { findCompanion } = require('../lib/features/documents/service.js');
+  const now = 1_800_000_000_000, ts = ms => ({ toMillis: () => ms });
+  const mine = { phoneHash: 'p1', addressHash: 'a1' };
+  const row = (id, extra) => ({ id, kind: 'aadhaar', submissionId: 's1', status: 'pending', ticketId: null, ...mine, expiresAt: now + 1000,
+    uploadedAt: ts(now - 5000), contentType: 'image/jpeg', storage: { original: 'case-documents/' + id + '/original' }, ...extra });
+  const rows = [
+    row('older', { uploadedAt: ts(now - 9000) }),
+    row('latest', { uploadedAt: ts(now - 1000) }),
+    row('replaced', { uploadedAt: ts(now - 10), supersededBy: 'latest' }),
+    row('lapsed', { uploadedAt: ts(now - 20), expiresAt: now - 1 }),
+    row('someone-else', { uploadedAt: ts(now - 30), phoneHash: 'p2' }),
+    row('in-flight-replacement', { uploadedAt: ts(now - 40), replacementFor: 'synthetic-request' }),
+    row('self', { uploadedAt: ts(now) }),
+    row('case-old', { submissionId: 's0', status: 'attached', ticketId: 't1', uploadedAt: ts(now - 9000) }),
+    row('case-new', { submissionId: 's0', status: 'attached', ticketId: 't1', uploadedAt: ts(now - 100) }),
+    row('case-superseded', { submissionId: 's0', status: 'attached', ticketId: 't1', uploadedAt: ts(now - 50), supersededBy: 'case-new' }),
+    row('bad-path', { submissionId: 's9', storage: { original: 'case-documents/elsewhere/original' } }),
+  ];
+  const reads = [];
+  const store = { read: async path => { reads.push(path); return Buffer.from(path); } };
+  const db = companionDb(rows);
+  const found = await findCompanion(db, store, { submissionId: 's1', caller: mine }, 'self', 'aadhaar', now);
+  assert.deepEqual(found, { bytes: Buffer.from('case-documents/latest/original'), contentType: 'image/jpeg' });
+  // Guests bind by address; a phone-bound upload is not theirs.
+  assert.equal(await findCompanion(db, store, { submissionId: 's1', caller: { phoneHash: null, addressHash: 'a1' } }, 'self', 'aadhaar', now), null);
+  const forCase = await findCompanion(db, store, { ticketId: 't1' }, 'self', 'aadhaar', now);
+  assert.equal(forCase.bytes.toString(), 'case-documents/case-new/original');
+  assert.equal(await findCompanion(db, store, { submissionId: 's9', caller: mine }, 'self', 'aadhaar', now), null);
+  assert.equal(await findCompanion(db, store, { submissionId: 's1', caller: mine }, 'self', 'selfie', now), null);
+  assert.equal(await findCompanion(db, store, { submissionId: 's1', caller: mine }, 'self', '__proto__', now), null);
+  assert.deepEqual(reads, ['case-documents/latest/original', 'case-documents/case-new/original']);
+});
+
 test('the fallback magic-byte test agrees with the screening engine', () => {
   const { sniffContentType } = require('../lib/features/documents/screening/index.js');
   const samples = [
@@ -169,4 +260,69 @@ test('the fallback magic-byte test agrees with the screening engine', () => {
   ].map(bytes => Buffer.from(bytes));
   for (const bytes of samples) assert.equal(rules.sniffDocumentType(bytes), sniffContentType(bytes));
   assert.equal(rules.sniffDocumentType(Buffer.from('GIF89a')), null);
+});
+
+// A transaction-capable stand-in for the review path: documents by path, equality queries only.
+function reviewDb(initial) {
+  const store = new Map(Object.entries(initial));
+  let auto = 0;
+  const ref = path => ({ id: path.split('/').pop(), path, collection: name => ({ doc: id => ref(path + '/' + name + '/' + (id ?? 'auto-' + ++auto)) }) });
+  const snap = target => ({ id: target.id, ref: target, exists: store.has(target.path), data: () => store.get(target.path), get: key => store.get(target.path)?.[key] });
+  const query = (name, filters) => ({ query: true, name, filters, where: (field, op, value) => query(name, [...filters, [field, value]]), limit: () => query(name, filters) });
+  const db = {
+    collection: name => ({ doc: id => ref(name + '/' + id), where: (field, op, value) => query(name, [[field, value]]) }),
+    runTransaction: async work => work({
+      get: async target => target.query
+        ? { docs: [...store].filter(([path, data]) => path.split('/').length === 2 && path.startsWith(target.name + '/')
+          && target.filters.every(([field, value]) => data[field] === value)).map(([path]) => snap(ref(path))) }
+        : snap(target),
+      getAll: async (...targets) => targets.map(snap),
+      update: (target, data) => store.set(target.path, { ...store.get(target.path), ...data }),
+      create: (target, data) => { assert.ok(!store.has(target.path), 'create over ' + target.path); store.set(target.path, data); },
+    }),
+  };
+  return { db, store };
+}
+
+test('a re-upload review records the officer, acknowledges the case and opens one document request', async () => {
+  const { reviewDocument } = require('../lib/features/documents/service.js');
+  const now = Date.now();
+  const { db, store } = reviewDb({
+    'tickets/t1': { status: 'open', revision: 2, firstActionAt: null, overdue: 'acknowledge', ackDueAt: now - 1000, resolveDueAt: now + 30 * DAY, openDocumentRequests: 0 },
+    'caseDocuments/d1': { status: 'attached', ticketId: 't1', kind: 'aadhaar', review: null, supersededBy: null },
+  });
+  const officer = { uid: 'officer-1', email: 'staff@example.invalid', displayName: 'Synthetic Officer', role: 'District officer', access: 'officer' };
+  const staff = { officerUid: 'officer-1', officerEmail: 'staff@example.invalid', officerName: 'Synthetic Officer', officerRole: 'District officer' };
+  const ask = requestId => reviewDocument(db, officer, { documentId: 'd1', decision: 'reupload_requested', reason: 'Blurred photo', requestId });
+  const { review } = await ask('request-0001');
+  assert.equal(review.decision, 'reupload_requested');
+  assert.deepEqual({ ...store.get('caseDocuments/d1').review, at: undefined, expiresAt: 0 }, { decision: 'reupload_requested', reason: 'Blurred photo', by: 'officer-1',
+    byEmail: 'staff@example.invalid', ...staff, at: undefined, expiresAt: 0 });
+  const event = store.get('tickets/t1/events/request-0001');
+  assert.equal(event.type, 'document_review');
+  for (const [field, value] of Object.entries(staff)) assert.equal(event[field], value, field);
+  const request = store.get('documentRequests/request-0001');
+  assert.deepEqual({ ...request, requestedAt: 0, expiresAt: 0 }, { ticketId: 't1', documentId: 'd1', kind: 'aadhaar', requestedAt: 0, expiresAt: 0,
+    fulfilledAt: null, fulfilledDocumentId: null });
+  assert.equal(request.expiresAt - request.requestedAt, rules.REPLACEMENT_TTL_MS);
+  // The review carries the request's server expiry (ms), for the dossier.
+  assert.equal(store.get('caseDocuments/d1').review.expiresAt, request.expiresAt);
+  assert.equal(review.expiresAt, request.expiresAt);
+  const ticket = store.get('tickets/t1');
+  assert.equal(ticket.openDocumentRequests, 1);
+  assert.equal(ticket.revision, 3);
+  assert.equal(typeof ticket.firstActionAt, 'number');
+  assert.equal(ticket.overdue, null);
+  assert.ok([...store.keys()].some(path => path.startsWith('tickets/t1/events/auto-') && store.get(path).type === 'escalation'));
+
+  // A retry with the same reference changes nothing.
+  const before = JSON.stringify([...store]);
+  await ask('request-0001');
+  assert.equal(JSON.stringify([...store]), before);
+  // Asking again while the request is open records the review only.
+  await ask('request-0002');
+  assert.equal(store.has('documentRequests/request-0002'), false);
+  assert.equal(store.get('tickets/t1').openDocumentRequests, 1);
+  assert.equal(store.get('caseDocuments/d1').review.expiresAt, request.expiresAt);
+  assert.equal(store.get('tickets/t1').firstActionAt, ticket.firstActionAt);
 });

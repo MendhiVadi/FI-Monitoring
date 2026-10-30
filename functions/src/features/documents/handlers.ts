@@ -1,31 +1,15 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
+import { appCheckOption } from "../../platform/appCheck";
 import { DISPUTE_OTP_SECRET } from "../../platform/secrets";
 import { normalizePhone } from "../otp/service";
 import { otpRequired } from "../disputes/params";
 import { requireOfficer } from "../tickets/authorization";
-import { DocumentInputError, sniffDocumentType, validateFileRequest, validateReviewRequest, validateUploadRequest, validDocumentId,
+import { screeningDeps } from "./deps";
+import { DocumentInputError, validateFileRequest, validateReviewRequest, validateUploadRequest, validDocumentId,
   validSubmissionId } from "./rules";
-import { readCaseDocumentFile, removeCaseDocument, reviewDocument, uploadCaseDocument, type ReporterProof, type ScreeningEngine } from "./service";
+import { readCaseDocumentFile, removeCaseDocument, reviewDocument, uploadCaseDocument, type ReporterProof } from "./service";
 import { firebaseStore } from "./storage";
-
-// Loaded on first upload only (see ScreeningEngine); the certificate is read once per instance.
-let uidaiCertPem: string | null | undefined;
-// Every report needs an Aadhaar upload, so an engine that fails to load (a
-// missing native binary, say) must not stop reporting: files are still
-// type-checked and stored, and staff see "screening could not run".
-const unavailableEngine: ScreeningEngine = { ENGINE_VERSION: "unavailable", sniffContentType: sniffDocumentType,
-  screenDocument: () => Promise.reject(Object.assign(new Error("Screening engine unavailable"), { name: "EngineUnavailable" })) };
-async function screeningDeps() {
-  try {
-    const engine = await import("./screening/index");
-    if (uidaiCertPem === undefined) uidaiCertPem = engine.loadUidaiCertificate();
-    return { store: firebaseStore, engine, uidaiCertPem };
-  } catch (err) {
-    console.error("Document screening engine failed to load", { error: err instanceof Error ? err.name : "unknown" });
-    return { store: firebaseStore, engine: unavailableEngine, uidaiCertPem: null };
-  }
-}
 
 function invalid(err: unknown, fallback: string): never {
   throw new HttpsError("invalid-argument", err instanceof DocumentInputError || err instanceof Error ? err.message : fallback);
@@ -50,8 +34,8 @@ function storageFailure(err: unknown, message: string): never {
 // low instance cap is the cost ceiling for an unauthenticated endpoint. One
 // request per instance: the default 80 would split 2 GiB and one CPU between
 // that many OCR workers, and a burst would fail every upload at once.
-export const uploadDisputeDocument = onCall({ invoker: "public", maxInstances: 5, concurrency: 1, memory: "2GiB", timeoutSeconds: 120,
-  secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
+export const uploadDisputeDocument = onCall({ ...appCheckOption(), invoker: "public", maxInstances: 5, concurrency: 1, memory: "2GiB",
+  timeoutSeconds: 120, secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   let upload;
   try { upload = validateUploadRequest(request.data); } catch (err) { invalid(err, "Invalid document."); }
   const proof = reporterProof(request.data, request.rawRequest.ip);
@@ -62,7 +46,7 @@ export const uploadDisputeDocument = onCall({ invoker: "public", maxInstances: 5
   }
 });
 
-export const removeDisputeDocument = onCall({ invoker: "public", maxInstances: 10, timeoutSeconds: 30,
+export const removeDisputeDocument = onCall({ ...appCheckOption(), invoker: "public", maxInstances: 10, timeoutSeconds: 30,
   secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   const submissionId = request.data?.submissionId, documentId = request.data?.documentId;
   if (!validSubmissionId(submissionId) || !validDocumentId(documentId)) throw new HttpsError("invalid-argument", "A valid document reference is required.");
@@ -74,7 +58,9 @@ export const removeDisputeDocument = onCall({ invoker: "public", maxInstances: 1
   }
 });
 
-export const getCaseDocumentFile = onCall({ invoker: "public", maxInstances: 10, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
+// Staff only (officer or admin): viewers see documents through the masked case view, never the files.
+export const getCaseDocumentFile = onCall({ ...appCheckOption(), invoker: "public", maxInstances: 10, memory: "512MiB", timeoutSeconds: 60 },
+  async (request) => {
   await requireOfficer(request.auth);
   let target;
   try { target = validateFileRequest(request.data); } catch (err) { invalid(err, "Invalid document reference."); }
@@ -87,7 +73,7 @@ export const getCaseDocumentFile = onCall({ invoker: "public", maxInstances: 10,
   }
 });
 
-export const reviewCaseDocument = onCall({ invoker: "public", maxInstances: 10 }, async (request) => {
+export const reviewCaseDocument = onCall({ ...appCheckOption(), invoker: "public", maxInstances: 10 }, async (request) => {
   const officer = await requireOfficer(request.auth);
   let input;
   try { input = validateReviewRequest(request.data); } catch (err) { invalid(err, "Invalid review."); }

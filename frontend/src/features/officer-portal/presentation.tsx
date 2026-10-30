@@ -1,5 +1,9 @@
 import type React from "react";
+import contract from "../../shared/contracts/dispute.json";
+import type { StaffAccess } from "../auth/staffSession";
 import type { DecisionPriority } from "../tickets/ticketDecisionTree";
+import type { OverdueState, Ticket } from "../tickets/types";
+import type { StaffStamp } from "../tickets/useTicketDetail";
 
 const TONES: Record<DecisionPriority, React.CSSProperties> = {
   Critical: { color: "#fecaca", background: "rgba(239, 68, 68, 0.18)", borderColor: "rgba(239, 68, 68, 0.45)" },
@@ -56,10 +60,54 @@ export function relativeTime(ms: number, now = Date.now()): string {
   return shortDate.format(new Date(ms));
 }
 
-// Email is not stored on notes/events, so other staff appear by a short UID tag.
+// Entries written before wave 2 store no email, so their staff appear by a short UID tag.
 export function actorLabel(uid: string | undefined, currentUid: string | undefined): string {
   if (!uid) return "Staff member";
   return uid === currentUid ? "You" : `Staff ·${uid.slice(-4)}`;
+}
+
+// Access levels by their contract labels without the explanation in brackets:
+// "Viewer", "Officer", "Administrator".
+const ACCESS_LABELS = new Map(contract.staffAccess.map(level => [level.id, level.label.replace(/\s*\(.*\)\s*$/, "")]));
+export const accessLabel = (access: StaffAccess | null | undefined) => (access && ACCESS_LABELS.get(access)) || "Staff";
+// officerRole is the officers/{uid} role label (free text); an access level id
+// reads as its label.
+export function roleLabel(role: string | null | undefined): string | null {
+  const text = typeof role === "string" ? role.trim().slice(0, 60) : "";
+  return text ? ACCESS_LABELS.get(text) ?? text : null;
+}
+
+// Who wrote a note, event or review: name, else email, plus the role label.
+// Legacy entries keep the "Staff ·xxxx" tag; masked (viewer) copies carry the role only.
+export function staffIdentityLabel(entry: StaffStamp, currentUid?: string): string {
+  const uid = entry.officerUid ?? entry.actorUid;
+  const who = entry.officerName?.trim() || entry.officerEmail?.trim();
+  const role = roleLabel(entry.officerRole ?? entry.actorRole);
+  if (!who && !uid) return role ?? (entry.actor?.trim() || "Staff member");
+  const name = who ? who + (uid && uid === currentUid ? " (you)" : "") : actorLabel(uid, currentUid);
+  return [name, role].filter(Boolean).join(" · ");
+}
+
+// Who is on the case: "name (you)", else email, else a short UID tag. A masked
+// (viewer) copy carries initials and `assigned` only. null when nobody is assigned.
+export function assigneeText(ticket: Ticket, currentUid: string | undefined): string | null {
+  const who = ticket.assignedName?.trim() || ticket.assignedEmail?.trim() || (ticket.assignedTo ? `Staff ·${ticket.assignedTo.slice(-4)}` : "")
+    || (ticket.assigned ? "A staff member" : "");
+  if (!who) return null;
+  return ticket.assignedTo && ticket.assignedTo === currentUid ? `${who} (you)` : who;
+}
+
+// Overdue cases carry a glyph and words, never colour alone.
+const { acknowledgeDays, resolveDays } = contract.serviceTargets;
+const OVERDUE: Record<OverdueState, { short: string; long: string }> = {
+  acknowledge: { short: "Overdue: not acknowledged", long: `No staff action within ${acknowledgeDays} days of filing` },
+  resolve: { short: "Overdue: not resolved", long: `Not resolved within ${resolveDays} days of filing` },
+};
+export const overdueText = (overdue: unknown) => overdue === "acknowledge" || overdue === "resolve" ? OVERDUE[overdue] : null;
+
+// Assignment and service-target times are stored as milliseconds.
+export function formatMs(ms: number | null | undefined): string {
+  return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? istDateTime.format(new Date(ms)) + " IST" : NO_DATE;
 }
 
 export function initialsFrom(email: string | null | undefined): string {

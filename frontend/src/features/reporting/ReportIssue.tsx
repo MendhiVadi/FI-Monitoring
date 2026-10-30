@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import disputeSettings from "../../../dispute-settings.json";
 import contract from "../../shared/contracts/dispute.json";
 import type { Step } from "./types";
@@ -8,20 +9,9 @@ import { Confirmation } from "./Confirmation";
 import { useDraftField, clearReportDraft, useDraftExpiry, touchDraft, dismissDraftExpiredNotice } from "./draftStore";
 import { formatClock, spokenMinutes, useRemaining } from "./countdown";
 import { caseTypeFor } from "./documentUploads";
+import { readLastTicket, writeLastTicket, type TrackLinkState } from "./lastTicket";
 import "./reporting.css";
 
-// Only the non-PII reference number is kept, so a refresh on the confirmation
-// (which wipes the in-memory draft) still leaves the reporter something.
-const LAST_TICKET_KEY = "land-dispute:last-ticket";
-function readLastTicket(): string | null {
-  try { return sessionStorage.getItem(LAST_TICKET_KEY); } catch { return null; }
-}
-function writeLastTicket(id: string | null) {
-  try {
-    if (id) sessionStorage.setItem(LAST_TICKET_KEY, id);
-    else sessionStorage.removeItem(LAST_TICKET_KEY);
-  } catch { /* storage blocked: the confirmation still shows it this time */ }
-}
 
 const EXPIRY_WARN_MS = 5 * 60 * 1000;
 // From the contract, so the checklist follows the required documents. The
@@ -87,6 +77,7 @@ export function ReportIssue() {
       {lastTicket && step !== "done" && (
         <p className="report-note" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
           <span>Your last reference: <strong style={{ fontFamily: "ui-monospace, Consolas, monospace" }}>{lastTicket}</strong></span>
+          <Link to="/track" state={{ reference: lastTicket } satisfies TrackLinkState} style={{ display: "inline-flex", alignItems: "center", minHeight: 44, padding: "0 0.25rem" }}>Track it</Link>
           <button type="button" className="report-link-btn" onClick={() => { writeLastTicket(null); setLastTicket(null); }}>Hide</button>
         </p>
       )}

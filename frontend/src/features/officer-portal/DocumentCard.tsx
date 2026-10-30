@@ -1,12 +1,13 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Spinner } from "../auth/Spinner";
 import {
-  REVIEW_LABELS, REVIEW_LIMITS, formatAadhaar, formatBytes, hasIdNumberInText, kindLabel, maskIdNumber, maskIdNumbersInText,
-  type CaseDocument, type CheckResult, type DocumentScreening, type FileVariant, type ReviewDecision,
+  REVIEW_LABELS, REVIEW_LIMITS, checkLabel, formatAadhaar, formatBytes, hasIdNumberInText, kindLabel, maskIdNumber, maskIdNumbersInText,
+  reuploadRequest, type CaseDocument, type CheckResult, type DocumentScreening, type FileVariant, type ReviewDecision,
 } from "../tickets/caseDocuments";
+import type { MaskedCaseDocument } from "../tickets/types";
 import { EventTime } from "./CaseText";
 import { fetchDocumentFile, reviewWasSaved, submitDocumentReview } from "./documentCalls";
-import { actorLabel, describeSaveError } from "./presentation";
+import { describeSaveError, formatMs, staffIdentityLabel } from "./presentation";
 import { newRequestId } from "./useOfficerPortal";
 import { styles } from "./portal.styles";
 
@@ -39,8 +40,10 @@ function riskKey(screening: DocumentScreening | undefined) {
   return screening.risk && Object.hasOwn(RISK, screening.risk) ? screening.risk : "unscored";
 }
 
-function RiskBadge({ screening }: { screening: DocumentScreening | undefined }) {
-  const { glyph, label, tone } = RISK[riskKey(screening)];
+// A masked (viewer) document carries the risk alone; null means not scored yet.
+function RiskBadge({ screening, risk }: { screening?: DocumentScreening; risk?: string | null }) {
+  const key = risk === undefined ? riskKey(screening) : risk && Object.hasOwn(RISK, risk) ? risk : "unscored";
+  const { glyph, label, tone } = RISK[key];
   return (
     <span style={{ ...styles.docBadge, ...tone }}>
       <span aria-hidden="true">{glyph}</span>
@@ -197,6 +200,55 @@ function ReviewForm({ document, onSaved }: { document: CaseDocument; onSaved: (m
   );
 }
 
+// Re-upload request state (vault/Wave-2-Spec.md §5), in words and a glyph.
+function ReuploadLine({ review, supersededBy }: { review: Parameters<typeof reuploadRequest>[0]; supersededBy?: string | null }) {
+  const request = reuploadRequest(review, supersededBy);
+  if (!request) return null;
+  const { state, expiresAt } = request;
+  return (
+    <p className={`doc-request doc-request--${state}`}>
+      <span aria-hidden="true">{state === "fulfilled" ? "✓" : state === "expired" ? "✕" : "↻"} </span>
+      {state === "fulfilled" ? <><strong>Re-upload received.</strong> The reporter sent a new copy, listed as a replacement.</>
+        : state === "expired" ? <><strong>Re-upload request expired</strong>{expiresAt !== null && <> on {formatMs(expiresAt)}</>}. No new copy arrived.</>
+        : <><strong>Re-upload requested.</strong> Waiting for the reporter{expiresAt !== null && <>; open until {formatMs(expiresAt)}</>}.</>}
+    </p>
+  );
+}
+
+function VersionTags({ replaces, supersededBy }: { replaces?: string | null; supersededBy?: string | null }) {
+  return (
+    <>
+      {replaces && <span className="doc-tag doc-tag--replacement" title="Uploaded by the reporter in answer to a re-upload request">↻ Replacement copy</span>}
+      {supersededBy && <span className="doc-tag doc-tag--superseded" title="A newer copy from the reporter replaced this one">⊘ Superseded</span>}
+    </>
+  );
+}
+
+// Viewers get kind, side, risk, summary and review only: no file, number,
+// extracted field or reviewer.
+export function MaskedDocumentCard({ document }: { document: MaskedCaseDocument }) {
+  const review = document.review;
+  return (
+    <li style={styles.docCard}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem 0.75rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0, display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+          <h4 style={styles.docTitle}>{kindLabel(document.kind)}</h4>
+          {document.side === "other_party" && <span style={styles.docSideTag}>Other party’s</span>}
+        </div>
+        <RiskBadge risk={document.risk} />
+      </div>
+      {document.summary && <p style={styles.docSummary}>{document.summary}</p>}
+      {review && (
+        <p style={styles.docReviewLine}>
+          <strong><span aria-hidden="true">{DECISION_GLYPHS[review.decision] ?? "•"} </span>{REVIEW_LABELS[review.decision] ?? review.decision}</strong>
+          {typeof review.at === "number" && <>{" · "}<EventTime at={{ seconds: Math.floor(review.at / 1000) }} /></>}
+        </p>
+      )}
+      <ReuploadLine review={review} />
+    </li>
+  );
+}
+
 // Memoised: the dossier re-renders on every keystroke in its status and note forms.
 export const DocumentCard = memo(function DocumentCard({ document, currentUid, onNotice }: {
   document: CaseDocument;
@@ -205,7 +257,7 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
 }) {
   const base = `doc-${document.id}`;
   const { files, load } = useDocumentFiles(document.id);
-  const [open, setOpen] = useState<{ preview: boolean; ela: boolean; faces: boolean }>({ preview: false, ela: false, faces: false });
+  const [open, setOpen] = useState({ preview: false, ela: false, copyMove: false, faces: false });
   const [reveal, setReveal] = useState(false);
   const screening = document.screening, checks = screening?.checks ?? [];
   const qr = screening?.extracted?.qr, ocr = screening?.extracted?.ocr;
@@ -230,6 +282,7 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
         <div style={{ minWidth: 0, display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
           <h4 id={`${base}-title`} style={styles.docTitle}>{label}</h4>
           {document.side === "other_party" && <span style={styles.docSideTag}>Other party’s</span>}
+          <VersionTags replaces={document.replaces} supersededBy={document.supersededBy} />
         </div>
         <RiskBadge screening={screening} />
       </div>
@@ -251,11 +304,12 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
       {review && (
         <p style={styles.docReviewLine}>
           <strong><span aria-hidden="true">{DECISION_GLYPHS[review.decision] ?? "•"} </span>{REVIEW_LABELS[review.decision] ?? review.decision}</strong>
-          {" by "}{review.by === currentUid ? "you" : review.byEmail || actorLabel(review.by, currentUid)}
+          {" by "}{staffIdentityLabel({ officerUid: review.by, officerEmail: review.byEmail, officerName: review.officerName, officerRole: review.officerRole }, currentUid)}
           {" · "}<EventTime at={review.at} />
           {review.reason && <span style={{ display: "block", marginTop: "0.2rem", overflowWrap: "anywhere" }}>“{review.reason}”</span>}
         </p>
       )}
+      <ReuploadLine review={review} supersededBy={document.supersededBy} />
 
       {checks.length > 0 && (
         <details className="doc-screen-only doc-details">
@@ -269,7 +323,7 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
                 <li key={check.id + ":" + index}>
                   <span aria-hidden="true" style={{ ...styles.docCheckGlyph, color: result.color, borderColor: result.color }}>{result.glyph}</span>
                   <span style={{ minWidth: 0 }}>
-                    <strong style={{ color: "#e5e7eb" }}>{check.label}</strong>
+                    <strong style={{ color: "#e5e7eb" }}>{checkLabel(check)}</strong>
                     <span style={{ color: result.color, fontWeight: 700 }}> · {result.label}</span>
                     {check.detail && <span style={{ display: "block", color: "#cbd5e1", overflowWrap: "anywhere" }}>{check.detail}</span>}
                   </span>
@@ -331,6 +385,12 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
             <Caret open={open.ela} /> ELA heatmap
           </button>
         )}
+        {document.storage?.copyMove && (
+          <button type="button" className="portal-btn" style={styles.modalSecondaryBtn} aria-expanded={open.copyMove} aria-controls={`${base}-copy-move`}
+            onClick={() => toggle("copyMove", ["copyMove"])}>
+            <Caret open={open.copyMove} /> Copy-move heatmap
+          </button>
+        )}
         {document.storage?.faceCard && document.storage?.faceQr && (
           <button type="button" className="portal-btn" style={styles.modalSecondaryBtn} aria-expanded={open.faces} aria-controls={`${base}-faces`}
             onClick={() => toggle("faces", ["faceCard", "faceQr"])}>
@@ -347,6 +407,12 @@ export const DocumentCard = memo(function DocumentCard({ document, currentUid, o
         <div id={`${base}-ela`} className="doc-screen-only" style={{ display: "grid", gap: "0.4rem" }}>
           <p style={styles.fieldHint}>Bright, tightly bounded patches can mean a region was edited; uniform noise is normal. Treat it as a hint only.</p>
           <FileView state={files.ela} label={`Error level heatmap of ${label}`} onRetry={() => load("ela")} />
+        </div>
+      )}
+      {open.copyMove && (
+        <div id={`${base}-copy-move`} className="doc-screen-only" style={{ display: "grid", gap: "0.4rem" }}>
+          <p style={styles.fieldHint}>Highlighted blocks look like copies of another part of the same image, as when a stamp or digit is pasted. Repeating patterns can match too; treat it as a hint only.</p>
+          <FileView state={files.copyMove} label={`Copy-move heatmap of ${label}`} onRetry={() => load("copyMove")} />
         </div>
       )}
       {open.faces && (

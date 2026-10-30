@@ -15,6 +15,9 @@
 .report-btn--secondary { background: transparent; color: #8ae0b7; border-color: #8ae0b7; }
 .report-btn--secondary:hover:not(:disabled) { background: rgba(138, 224, 183, .12); }
 .report-btn--secondary:disabled { background: transparent; }
+/* A link styled as a button keeps the button's text colour over the page's link colour. */
+.report-page a.report-btn, .track-page a.report-btn { color: var(--on-accent); }
+.report-page a.report-btn--secondary, .track-page a.report-btn--secondary { color: var(--accent); }
 .report-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
 @media (max-width: 420px) { .report-actions > .report-btn { flex: 1 1 100%; } }
 .report-link-btn { min-height: 44px; padding: 0 .25rem; background: none; border: none; color: #8ae0b7; font: inherit; text-decoration: underline; cursor: pointer; }
@@ -54,6 +57,23 @@
 .report-doc-messages { flex-basis: 100%; margin: 0 0 .4rem; padding-left: 1.1rem; font-size: .85rem; line-height: 1.5; color: #fde68a; }
 .report-doc-wide { flex-basis: 100%; margin: 0 0 .4rem; }
 @media (max-width: 420px) { .report-doc-kind > .report-btn { width: 100%; } }
+
+/* Selfie check (SelfieCapture). The live preview is mirrored, like a mirror;
+   the photos themselves are not. Progress is in words as well as colour. */
+.selfie-panel { margin-top: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-raised); }
+.selfie-panel__title { margin: 0 0 var(--space-2); font-size: 1rem; }
+.selfie-panel__title:focus { outline: none; }
+.selfie-consent p { margin: 0 0 var(--space-2); font-size: .92rem; line-height: 1.55; }
+.selfie-stage { position: relative; width: min(100%, 320px); aspect-ratio: 1; margin: var(--space-2) 0; overflow: hidden; border-radius: var(--radius-md); background: #000; }
+.selfie-video { display: block; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.selfie-guide { position: absolute; inset: 9% 19%; border: 3px dashed rgba(255, 255, 255, .8); border-radius: 50%; pointer-events: none; }
+.selfie-stage__status { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--text); }
+.selfie-steps { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; padding: 0; list-style: none; font-size: .85rem; }
+.selfie-steps li { padding: var(--space-1) .6rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-pill); color: var(--text-muted); }
+.selfie-steps li[data-state="current"] { border-color: var(--accent); color: var(--text); font-weight: 700; }
+.selfie-steps li[data-state="done"] { color: var(--accent-text); }
+.selfie-instruction { margin: var(--space-1) 0; font-size: 1.05rem; font-weight: 700; }
+.selfie-preview { display: block; width: 100%; max-width: 480px; height: auto; margin: var(--space-2) 0; border: 1px solid var(--border); border-radius: var(--radius-sm); }
 
 .report-error-summary { margin: 0 0 1.5rem; padding: 1rem; border: 2px solid #f87171; border-radius: 12px; background: rgba(239, 68, 68, .1); }
 .report-error-summary h2 { margin: 0 0 .5rem; font-size: 1.05rem; color: #fecaca; }

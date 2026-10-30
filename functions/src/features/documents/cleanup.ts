@@ -2,7 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { db } from "../../platform/firebase";
 import { purgeExpiredRecords } from "../otp/service";
 import { DAY_MS } from "./rules";
-import { drainPurgeQueue, purgeDocumentBatch } from "./service";
+import { drainPurgeQueue, purgeDocumentBatch, purgeDocumentRequests } from "./service";
 import { firebaseStore } from "./storage";
 
 const BATCH_SIZE = 100;
@@ -18,6 +18,7 @@ export const purgeExpiredDocuments = onSchedule({ schedule: "every 24 hours", ti
     ["pendingDocuments", () => purgeDocumentBatch(db, firebaseStore, "expiresAt", now, BATCH_SIZE)],
     ["closedCaseDocuments", () => purgeDocumentBatch(db, firebaseStore, "purgeAt", now, BATCH_SIZE)],
     ["documentUploadLimits", () => purgeExpiredRecords(db, "documentUploadLimits", "windowStartedAt", now - DAY_MS, BATCH_SIZE)],
+    ["documentRequests", () => purgeDocumentRequests(db, now, BATCH_SIZE)],
   ];
   let failures = 0;
   for (const [name, pass] of passes) {

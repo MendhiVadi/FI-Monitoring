@@ -92,15 +92,19 @@ export async function issueOtp(
   });
 }
 
-const IP_SENDS_PER_WINDOW = 10;
+// Default of the OTP_SENDS_PER_IP_HOUR param (platform/limits.ts), raised for
+// carrier NAT; the per-phone cap above is unchanged.
+export const IP_SENDS_PER_WINDOW = 30;
 
 // The per-phone cap alone still lets one caller walk a list of numbers and
 // bill the project for a WhatsApp message to each. This bounds the whole
 // endpoint per source address as well.
 export async function assertIpUnderSendLimit(
   db: admin.firestore.Firestore,
-  ipHash: string
+  ipHash: string,
+  limit: number = IP_SENDS_PER_WINDOW
 ): Promise<void> {
+  const cap = Number.isInteger(limit) && limit > 0 ? limit : IP_SENDS_PER_WINDOW;
   const ref = db.collection("otpSendLimits").doc(ipHash);
   await db.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(ref);
@@ -108,7 +112,7 @@ export async function assertIpUnderSendLimit(
     const now = Date.now();
     const windowStartedAt = typeof data?.windowStartedAt === "number" ? data.windowStartedAt : 0;
     const count = windowStartedAt > now - SEND_WINDOW_MS && typeof data?.count === "number" ? data.count : 0;
-    if (count >= IP_SENDS_PER_WINDOW) {
+    if (count >= cap) {
       throw new OtpRateLimitError("Too many verification codes requested. Please try again later.");
     }
     transaction.set(ref, {

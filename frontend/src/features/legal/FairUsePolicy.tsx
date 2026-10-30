@@ -37,6 +37,14 @@ export function FairUsePolicy() {
         about actual FRA implementation in any specific district or state.
       </p>
 
+      <h2>Automated access</h2>
+      <p>
+        The public actions of the report form and the status page (verification codes, uploads, submitting a
+        report and looking up a reference number) are meant for people using the site one case at a time. They are
+        protected by App Check with Google reCAPTCHA Enterprise and limited per network address and phone number.
+        Scripts and bots that try to get past these protections may be blocked.
+      </p>
+
       <h2>Rule-based explanations</h2>
       <p>
         Explanations are produced by fixed, documented rules from the values

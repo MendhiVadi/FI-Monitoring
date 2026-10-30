@@ -7,6 +7,7 @@
 // instead of waiting on the network.
 export const loadLogin = () => import("../features/auth/Login");
 export const loadReportIssue = () => import("../features/reporting/ReportIssue");
+export const loadTrackCase = () => import("../features/tracking/TrackCase");
 
 let idlePrefetched = false;
 

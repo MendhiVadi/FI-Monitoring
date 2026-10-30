@@ -9,8 +9,45 @@ const { assertFreshSession } = require('../lib/features/tickets/authorization.js
 const { hasValidMetaSignature } = require('../lib/features/whatsapp/webhook.js');
 const contract = require('../lib/platform/contracts/dispute.json');
 const input = { reporterName: 'Synthetic reporter', reporterType: contract.reporterTypes[0], otherPartyName: 'Synthetic party', otherPartyType: contract.partyTypes[0], disputeType: contract.disputeTypes[0], state: 'Maharashtra', district: 'Pune', village: '', description: 'A synthetic boundary concern for testing only.', location: {latitude:18.52,longitude:73.85}, locationConfirmed:true };
-test('deployment surface includes all original functions and the new registry/geocoder', () => {
-  assert.deepEqual(Object.keys(deployed).sort(), ['requestDisputeOtp','verifyDisputeOtp','submitDispute','purgeExpiredOtps','whatsappWebhook','updateTicketStatus','addTicketNote','listTickets','notifyWhatsAppOnTicketUpdate','notifyWhatsAppOnTicketCreated','geocodePlace','uploadDisputeDocument','removeDisputeDocument','getCaseDocumentFile','reviewCaseDocument','purgeExpiredDocuments'].sort());
+const WAVE_2_CALLABLES = ['assignTicket','listOfficers','getMaskedCase','getInsights','getCaseStatus','uploadReplacementDocument'];
+test('deployment surface includes all original functions, the registry/geocoder and the wave-2 functions', () => {
+  assert.deepEqual(Object.keys(deployed).sort(), ['requestDisputeOtp','verifyDisputeOtp','submitDispute','purgeExpiredOtps','whatsappWebhook','updateTicketStatus','addTicketNote','listTickets','notifyWhatsAppOnTicketUpdate','notifyWhatsAppOnTicketCreated','geocodePlace','uploadDisputeDocument','removeDisputeDocument','getCaseDocumentFile','reviewCaseDocument','purgeExpiredDocuments',
+    ...WAVE_2_CALLABLES,'escalateOverdueCases'].sort());
+});
+test('wave-2 callables are capped callables and the escalation job is a single-instance hourly schedule', () => {
+  for (const name of WAVE_2_CALLABLES) {
+    const endpoint = deployed[name].__endpoint;
+    assert.ok(endpoint.callableTrigger, name);
+    assert.ok(Number.isInteger(endpoint.maxInstances) && endpoint.maxInstances > 0 && endpoint.maxInstances <= 10, name);
+  }
+  // Public, unauthenticated endpoints get the tighter cap.
+  for (const name of ['getCaseStatus','uploadReplacementDocument']) assert.equal(deployed[name].__endpoint.maxInstances, 5, name);
+  for (const name of ['escalateOverdueCases','purgeExpiredOtps']) {
+    const endpoint = deployed[name].__endpoint;
+    assert.equal(endpoint.scheduleTrigger.schedule, 'every 60 minutes', name);
+    assert.equal(endpoint.maxInstances, 1, name);
+  }
+});
+test('the list filters and escalation passes have composite indexes; wave-2 server state is client-denied', () => {
+  const { readFileSync } = require('node:fs'), { join } = require('node:path');
+  const { indexes } = JSON.parse(readFileSync(join(__dirname, '..', '..', 'firestore.indexes.json'), 'utf8'));
+  const has = (group, fields) => indexes.some(index => index.collectionGroup === group &&
+    JSON.stringify(index.fields.map(field => field.fieldPath)) === JSON.stringify(fields));
+  for (const fields of [['assignedTo','updatedAt'], ['overdue','updatedAt'], ['assignedTo','overdue','updatedAt'], ['status','createdAt'],
+    ['status','firstActionAt','overdue','ackDueAt'], ['status','overdue','resolveDueAt'], ['overdue','firstActionAt'], ['status','overdue']]) {
+    assert.ok(has('tickets', fields), fields.join(','));
+  }
+  for (const fields of [['status','screening.risk'], ['status','review.decision']]) assert.ok(has('caseDocuments', fields), fields.join(','));
+  const rules = readFileSync(join(__dirname, '..', '..', 'firestore.rules'), 'utf8');
+  for (const collection of ['insightsCache','documentRequests','statusLookupLimits','notificationLimits','escalationState']) {
+    assert.match(rules, new RegExp(`match /${collection}/\\{\\w+\\} \\{\\s*allow read, write: if false;`), collection);
+  }
+  // Raw case reads need officer or admin access; viewers use the masked callables.
+  for (const path of ['tickets/{ticketId}', 'tickets/{ticketId}/notes/{noteId}', 'tickets/{ticketId}/events/{eventId}', 'caseDocuments/{documentId}']) {
+    const block = rules.split(`match /${path} {`)[1].split('}')[0];
+    assert.match(block, /allow get: if canReadCases\(\);/, path);
+    assert.doesNotMatch(block, /isOfficer\(\)/, path);
+  }
 });
 test('intake rejects unsupported enums, mismatched districts and overlong text', () => {
   for (const bad of [{reporterType:'Individual'}, {otherPartyType:'__proto__'}, {disputeType:'invented'}, {district:'Mandla'}, {state:'__proto__'}, {description:'x'}, {description:'x'.repeat(2001)}, {reporterName:'x'.repeat(121)}, {locationConfirmed:false}, {immediateRisk:'maybe'}, {evidenceReferences:Array(11).fill('ref')}, {evidenceReferences:['x'.repeat(121)]}]) assert.throws(() => validateDisputeInput({...input,...bad}));

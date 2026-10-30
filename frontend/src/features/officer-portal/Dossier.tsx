@@ -9,12 +9,17 @@ import { DossierActions } from "./DossierActions";
 import { DocumentsSection } from "./DocumentsSection";
 import { REVIEW_LABELS, kindLabel, type ReviewDecision } from "../tickets/caseDocuments";
 import { NoticeRegion } from "./NoticeRegion";
-import { actorLabel, decisionTone, formatTimestamp } from "./presentation";
+import { AssignmentPanel } from "./AssignmentPanel";
+import { ReadOnlyBanner } from "./ReadOnlyBanner";
+import { assigneeText, decisionTone, formatMs, formatTimestamp, overdueText, staffIdentityLabel } from "./presentation";
 import { EventTime, NotProvided } from "./CaseText";
 import { styles } from "./portal.styles";
 import type { useOfficerPortal } from "./useOfficerPortal";
+import type { Ticket } from "../tickets/types";
+import type { CaseEvent } from "../tickets/useTicketDetail";
 
 type Portal = ReturnType<typeof useOfficerPortal>;
+const rowText: CSSProperties = { fontSize: "0.85rem", color: "#e5e7eb", fontWeight: 600, overflowWrap: "anywhere" };
 // Printing pulls in up to this many extra 50-note pages before opening the dialog.
 const PRINT_PAGE_CAP = 10;
 
@@ -33,6 +38,92 @@ function SectionTitle({ color, title, children }: { color: string; title: string
   );
 }
 
+// One case-history row. Escalations are automatic and replacements come from
+// the reporter, so neither names a staff member unless staff wrote it.
+function HistoryEntry({ event, currentUid }: { event: CaseEvent; currentUid: string | undefined }) {
+  let body: ReactNode, actor = staffIdentityLabel(event, currentUid);
+  if (event.type === "document_review") {
+    body = (
+      <div style={rowText}>
+        Document reviewed: {event.kind ? kindLabel(event.kind) : "document"} ·{" "}
+        {event.decision && Object.hasOwn(REVIEW_LABELS, event.decision) ? REVIEW_LABELS[event.decision as ReviewDecision] : "Decision recorded"}
+      </div>
+    );
+  } else if (event.type === "assignment") {
+    // A masked copy says only whether someone was assigned, and their initials.
+    const assigned = event.to ? true : event.assigned === true;
+    const name = event.toName?.trim() || event.toEmail?.trim() || (event.to ? `Staff ·${event.to.slice(-4)}` : "");
+    const you = Boolean(event.to) && event.to === currentUid;
+    body = <div style={rowText}>{assigned ? <>Assigned to {name || "a staff member"}{you && " (you)"}</> : "Unassigned"}</div>;
+  } else if (event.type === "escalation") {
+    const overdue = overdueText(event.overdue);
+    body = (
+      <div style={rowText}>
+        {overdue ? <><span aria-hidden="true">⏱ </span>{overdue.short}<span style={{ display: "block", fontWeight: 400, color: "#cbd5e1" }}>{overdue.long}</span></>
+          : <><span aria-hidden="true">✓ </span>No longer overdue</>}
+      </div>
+    );
+    if (!event.officerUid) actor = event.actor?.trim() || "Automatic service-target check";
+  } else if (event.type === "document_replaced") {
+    body = <div style={rowText}><span aria-hidden="true">↻ </span>New copy uploaded: {event.kind ? kindLabel(event.kind) : "document"}</div>;
+    if (!event.officerUid) actor = event.actor?.trim() || "Reporter";
+  } else if (event.kind === "status") {
+    body = (
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+        <span className="sr-only">Status changed from</span>
+        {event.before ? <StatusBadge status={event.before} /> : <NotProvided label="Unknown" />}
+        <span aria-hidden="true" style={{ color: "#94a3b8" }}>→</span>
+        <span className="sr-only">to</span>
+        {event.after ? <StatusBadge status={event.after} /> : <NotProvided label="Unknown" />}
+      </div>
+    );
+  } else {
+    body = <div style={rowText}>{event.kind === "note" ? "Case note added" : "Case updated"}</div>;
+  }
+  const quoted = event.kind === "status" || event.type === "document_review" || event.type === "assignment";
+  return (
+    <li>
+      {body}
+      {quoted && event.reason && (
+        <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem", color: "#e5e7eb", overflowWrap: "anywhere" }}>“{event.reason}”</p>
+      )}
+      <small style={{ display: "block", marginTop: "0.25rem", color: "#94a3b8" }}>
+        {actor} · <EventTime at={event.at} />
+      </small>
+    </li>
+  );
+}
+
+// Service targets and assignment, as stored (ms). A masked copy carries the
+// overdue state and assignee initials only, so absent dates are not shown.
+function CaseTargets({ ticket, currentUid }: { ticket: Ticket; currentUid: string | undefined }) {
+  const overdue = overdueText(ticket.overdue), assignee = assigneeText(ticket, currentUid);
+  const acknowledged = typeof ticket.firstActionAt === "number" ? ticket.firstActionAt : null;
+  return (
+    <>
+      {overdue && (
+        <p className="dossier-overdue">
+          <span aria-hidden="true">⏱ </span><strong>{overdue.short}.</strong> {overdue.long}
+          {typeof ticket.overdueSince === "number" && <> · since {formatMs(ticket.overdueSince)}</>}
+        </p>
+      )}
+      <dl className="dossier-targets">
+        <div><dt>Assigned to</dt><dd>{assignee ?? <NotProvided label="Nobody yet" />}</dd></div>
+        {typeof ticket.ackDueAt === "number" && (
+          <div>
+            <dt>Acknowledge by</dt>
+            <dd>
+              {formatMs(ticket.ackDueAt)}
+              {acknowledged !== null && <span style={{ color: "#86efac" }}> · <span aria-hidden="true">✓ </span>first staff action {formatMs(acknowledged)}</span>}
+            </dd>
+          </div>
+        )}
+        {typeof ticket.resolveDueAt === "number" && <div><dt>Resolve by</dt><dd>{formatMs(ticket.resolveDueAt)}</dd></div>}
+      </dl>
+    </>
+  );
+}
+
 function Detail({ label, children, valueStyle }: { label: string; children: ReactNode; valueStyle?: CSSProperties }) {
   return (
     <div style={styles.detailRow}>
@@ -48,7 +139,8 @@ function Detail({ label, children, valueStyle }: { label: string; children: Reac
 export function Dossier({ portal }: { portal: Portal }) {
   const { selectedId, selectedTicket: ticket, setSelectedTicket, detailError, retryDetail, selectedDecision, officerEmail, currentUid,
     statusReason, setStatusReason, newOfficerNote, setNewOfficerNote, saveError, clearSaveError, savingKind,
-    handleUpdateStatus, handleAddNote, events, notes, moreNotes, notesBusy, loadOlderNotes, notice, showNotice, dismissNotice } = portal;
+    handleUpdateStatus, handleAddNote, events, notes, moreNotes, notesBusy, loadOlderNotes, notice, showNotice, dismissNotice,
+    readOnly, isAdmin, staff, assignReason, setAssignReason, handleAssign, maskedDocuments } = portal;
   const close = () => setSelectedTicket(null);
   const [printedAt, setPrintedAt] = useState(() => new Date());
   const [preparingPrint, setPreparingPrint] = useState(false);
@@ -122,12 +214,14 @@ export function Dossier({ portal }: { portal: Portal }) {
               <div className="print-only print-header">
                 Land Dispute · Case dossier · Ref {ticket.id} · Printed {formatGovClock(printedAt)} IST by {officerEmail || "signed-in staff"}
                 <br />
-                <strong>CONFIDENTIAL: contains personal data. Not an official legal record.</strong>
+                <strong>{readOnly ? "CONFIDENTIAL: masked copy, personal data hidden." : "CONFIDENTIAL: contains personal data."} Not an official legal record.</strong>
                 {moreNotes && <div>Only {notes.length} of {ticket.noteCount ?? "all"} notes are included in this printout.</div>}
               </div>
               {detailError && <p role="alert" style={{ ...styles.fieldError, marginTop: 0 }}>{detailError}</p>}
+              {/* The page behind the dialog is inert, so the viewer banner repeats here. */}
+              {readOnly && <ReadOnlyBanner />}
 
-              <div className="dossier-layout">
+              <div className={readOnly ? "dossier-layout dossier-layout--single" : "dossier-layout"}>
                 <div className="dossier-main">
                   {/* Summary */}
                   <section style={styles.modalSectionCard} aria-labelledby="dossier-title">
@@ -146,6 +240,7 @@ export function Dossier({ portal }: { portal: Portal }) {
                     <p style={{ margin: "0.6rem 0 0", fontSize: "0.8rem", color: "#94a3b8" }}>
                       Filed {formatTimestamp(ticket.createdAt)} · Last updated {formatTimestamp(ticket.updatedAt)}
                     </p>
+                    <CaseTargets ticket={ticket} currentUid={currentUid} />
                   </section>
 
                   {/* Verbatim Narrative */}
@@ -239,17 +334,22 @@ export function Dossier({ portal }: { portal: Portal }) {
                         </svg>
                         <h3 id="party-reporter" style={{ ...styles.partyHeading, margin: 0 }}>Reporter</h3>
                       </div>
-                      <Detail label="Full name">{dispute?.reporterName || <NotProvided />}</Detail>
+                      <Detail label={readOnly ? "Initials" : "Full name"}>{dispute?.reporterName || <NotProvided />}</Detail>
                       <Detail label="Capacity">{dispute?.reporterType || <NotProvided />}</Detail>
                       <Detail label="Phone / WhatsApp" valueStyle={ticket.waFrom ? { color: "#22c55e", fontWeight: 600 } : undefined}>
                         {ticket.waFrom || <NotProvided />}
                       </Detail>
-                      <Detail label="Phone check" valueStyle={{ color: ticket.phoneVerified === true ? "#4ade80" : "#fbbf24", fontWeight: 600 }}>
-                        {ticket.phoneVerified === true ? <><span aria-hidden="true">✓ </span>Verified</> : <><span aria-hidden="true">! </span>Not verified</>}
-                      </Detail>
-                      <Detail label="WhatsApp updates">
-                        {notifies ? "Opted in" : ticket.whatsappUpdates === false || ticket.phoneVerified === true ? "Not opted in" : <NotProvided label="Not recorded" />}
-                      </Detail>
+                      {/* The masked copy carries neither, so a viewer would see a false "Not verified". */}
+                      {!readOnly && (
+                        <>
+                          <Detail label="Phone check" valueStyle={{ color: ticket.phoneVerified === true ? "#4ade80" : "#fbbf24", fontWeight: 600 }}>
+                            {ticket.phoneVerified === true ? <><span aria-hidden="true">✓ </span>Verified</> : <><span aria-hidden="true">! </span>Not verified</>}
+                          </Detail>
+                          <Detail label="WhatsApp updates">
+                            {notifies ? "Opted in" : ticket.whatsappUpdates === false || ticket.phoneVerified === true ? "Not opted in" : <NotProvided label="Not recorded" />}
+                          </Detail>
+                        </>
+                      )}
                     </section>
 
                     <section style={styles.partyCard} aria-labelledby="party-other">
@@ -262,7 +362,7 @@ export function Dossier({ portal }: { portal: Portal }) {
                         </svg>
                         <h3 id="party-other" style={{ ...styles.partyHeading, margin: 0, color: "#f87171" }}>Other party named</h3>
                       </div>
-                      <Detail label="Name">{dispute?.otherPartyName || <NotProvided />}</Detail>
+                      <Detail label={readOnly ? "Initials" : "Name"}>{dispute?.otherPartyName || <NotProvided />}</Detail>
                       <Detail label="Type">{dispute?.otherPartyType || <NotProvided />}</Detail>
                       <Detail label="Dispute category" valueStyle={dispute?.disputeType ? { color: "#fbbf24" } : undefined}>
                         {dispute?.disputeType || <NotProvided />}
@@ -291,17 +391,18 @@ export function Dossier({ portal }: { portal: Portal }) {
                         <div style={styles.geoValue}>{dispute?.village || <NotProvided />}</div>
                       </div>
                       <div style={styles.geoBox}>
-                        <div style={styles.geoLabel}>MAP COORDINATES</div>
+                        <div style={styles.geoLabel}>{readOnly ? "MAP COORDINATES (APPROX.)" : "MAP COORDINATES"}</div>
                         <div style={{ ...styles.geoValue, fontVariantNumeric: "tabular-nums" }}>
+                          {/* The masked copy is rounded to 2 decimals (about 1 km); never pad it to look precise. */}
                           {dispute?.location
-                            ? `${dispute.location.latitude.toFixed(6)}, ${dispute.location.longitude.toFixed(6)}`
+                            ? `${dispute.location.latitude.toFixed(readOnly ? 2 : 6)}, ${dispute.location.longitude.toFixed(readOnly ? 2 : 6)}`
                             : <NotProvided label="No point selected" />}
                         </div>
                       </div>
                     </div>
                   </section>
 
-                  <DocumentsSection ticket={ticket} currentUid={currentUid} onNotice={showNotice} />
+                  <DocumentsSection ticket={ticket} currentUid={currentUid} onNotice={showNotice} masked={maskedDocuments} />
 
                   {!!dispute?.evidenceReferences?.length && (
                     <section style={styles.modalSectionCard}>
@@ -355,32 +456,7 @@ export function Dossier({ portal }: { portal: Portal }) {
                     <p style={{ ...styles.fieldHint, marginBottom: "0.75rem" }}>Latest 50 recorded changes. Earlier legacy actions may have no audit entry.</p>
                     {events.length ? (
                       <ol className="dossier-history">
-                        {events.map(event => (
-                          <li key={event.id}>
-                            {event.type === "document_review" ? (
-                              <div style={{ fontSize: "0.85rem", color: "#e5e7eb", fontWeight: 600 }}>
-                                Document reviewed: {event.kind ? kindLabel(event.kind) : "document"} ·{" "}
-                                {event.decision && Object.hasOwn(REVIEW_LABELS, event.decision) ? REVIEW_LABELS[event.decision as ReviewDecision] : "Decision recorded"}
-                              </div>
-                            ) : event.kind === "status" ? (
-                              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
-                                <span className="sr-only">Status changed from</span>
-                                {event.before ? <StatusBadge status={event.before} /> : <NotProvided label="Unknown" />}
-                                <span aria-hidden="true" style={{ color: "#94a3b8" }}>→</span>
-                                <span className="sr-only">to</span>
-                                {event.after ? <StatusBadge status={event.after} /> : <NotProvided label="Unknown" />}
-                              </div>
-                            ) : (
-                              <div style={{ fontSize: "0.85rem", color: "#e5e7eb", fontWeight: 600 }}>Case note added</div>
-                            )}
-                            {(event.kind === "status" || event.type === "document_review") && event.reason && (
-                              <p style={{ margin: "0.35rem 0 0", fontSize: "0.85rem", color: "#e5e7eb", overflowWrap: "anywhere" }}>“{event.reason}”</p>
-                            )}
-                            <small style={{ display: "block", marginTop: "0.25rem", color: "#94a3b8" }}>
-                              {actorLabel(event.officerUid ?? event.actorUid, currentUid)} · <EventTime at={event.at} />
-                            </small>
-                          </li>
-                        ))}
+                        {events.map(event => <HistoryEntry key={event.id} event={event} currentUid={currentUid} />)}
                       </ol>
                     ) : <p style={styles.fieldHint}>No audit entries recorded yet.</p>}
                   </section>
@@ -397,7 +473,7 @@ export function Dossier({ portal }: { portal: Portal }) {
                           <li key={note.id}>
                             <p style={{ margin: 0, fontSize: "0.88rem", color: "#e5e7eb", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{note.text}</p>
                             <small style={{ display: "block", marginTop: "0.25rem", color: "#94a3b8" }}>
-                              {actorLabel(note.officerUid, currentUid)} · <EventTime at={note.at} />
+                              {staffIdentityLabel(note, currentUid)} · <EventTime at={note.at} />
                             </small>
                           </li>
                         ))}
@@ -422,28 +498,42 @@ export function Dossier({ portal }: { portal: Portal }) {
                   </section>
                 </div>
 
-                {/* Actions: sticky beside the case on wide screens */}
-                <aside className="dossier-actions dossier-edit-control" aria-label="Case actions">
-                  <DossierActions
-                    ticket={ticket}
-                    statusReason={statusReason}
-                    setStatusReason={setStatusReason}
-                    newNote={newOfficerNote}
-                    setNewNote={setNewOfficerNote}
-                    saveError={saveError}
-                    clearSaveError={clearSaveError}
-                    savingKind={savingKind}
-                    onUpdateStatus={handleUpdateStatus}
-                    onAddNote={handleAddNote}
-                  />
-                </aside>
+                {/* Actions: sticky beside the case on wide screens. Viewers get none. */}
+                {!readOnly && (
+                  <aside className="dossier-actions dossier-edit-control" aria-label="Case actions">
+                    <AssignmentPanel
+                      ticket={ticket}
+                      currentUid={currentUid}
+                      isAdmin={isAdmin}
+                      staff={staff}
+                      reason={assignReason}
+                      setReason={setAssignReason}
+                      saveError={saveError}
+                      clearSaveError={clearSaveError}
+                      savingKind={savingKind}
+                      onAssign={handleAssign}
+                    />
+                    <DossierActions
+                      ticket={ticket}
+                      statusReason={statusReason}
+                      setStatusReason={setStatusReason}
+                      newNote={newOfficerNote}
+                      setNewNote={setNewOfficerNote}
+                      saveError={saveError}
+                      clearSaveError={clearSaveError}
+                      savingKind={savingKind}
+                      onUpdateStatus={handleUpdateStatus}
+                      onAddNote={handleAddNote}
+                    />
+                  </aside>
+                )}
               </div>
             </>
           )}
         </div>
 
         {/* Phones and tablets: jump to the action forms below the case */}
-        {ticket && (
+        {ticket && !readOnly && (
           <div className="dossier-mobile-bar dossier-edit-control">
             <button type="button" className="portal-btn" style={styles.modalSecondaryBtn} onClick={() => focusField("next-status")}>Update status</button>
             <button type="button" className="portal-btn" style={styles.modalSecondaryBtn} onClick={() => focusField("case-note")}>Add note</button>

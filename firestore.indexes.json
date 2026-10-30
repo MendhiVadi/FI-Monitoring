@@ -1,5 +1,16 @@
 {
-  "indexes": [],
+  "indexes": [
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "assignedTo", "order": "ASCENDING" }, { "fieldPath": "updatedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "overdue", "order": "ASCENDING" }, { "fieldPath": "updatedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "assignedTo", "order": "ASCENDING" }, { "fieldPath": "overdue", "order": "ASCENDING" }, { "fieldPath": "updatedAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "firstActionAt", "order": "ASCENDING" }, { "fieldPath": "overdue", "order": "ASCENDING" }, { "fieldPath": "ackDueAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "overdue", "order": "ASCENDING" }, { "fieldPath": "resolveDueAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "overdue", "order": "ASCENDING" }, { "fieldPath": "firstActionAt", "order": "ASCENDING" }] },
+    { "collectionGroup": "tickets", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "overdue", "order": "ASCENDING" }] },
+    { "collectionGroup": "caseDocuments", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "screening.risk", "order": "ASCENDING" }] },
+    { "collectionGroup": "caseDocuments", "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "review.decision", "order": "ASCENDING" }] }
+  ],
   "fieldOverrides": [
     { "collectionGroup": "tickets", "fieldPath": "dispute.description", "indexes": [] },
     { "collectionGroup": "tickets", "fieldPath": "dispute.evidenceReferences", "indexes": [] },

@@ -9,11 +9,14 @@ export const MAX_FILE_BYTES: number = contract.documents.maxFileBytes;
 export const MAX_FILES: number = contract.documents.maxFiles;
 export const PENDING_TTL_MS = contract.documents.pendingTtlMinutes * 60_000;
 export const RETENTION_MS = contract.documents.retentionDaysAfterClose * DAY_MS;
-export const UPLOADS_PER_DAY = 40;
-export const UPLOAD_BYTES_PER_DAY = 60 * MIB;
+export const REPLACEMENT_TTL_MS = contract.documents.replacementTtlDays * DAY_MS;
+// Defaults of the UPLOADS_PER_IP_DAY / UPLOAD_BYTES_PER_IP_DAY_MIB params
+// (platform/limits.ts); the callables pass the deployed values.
+export const UPLOADS_PER_DAY = 150;
+export const UPLOAD_BYTES_PER_DAY = 300 * MIB;
 export const NEAR_DUPLICATE_DISTANCE = 6;
 export const REVIEW_DECISIONS = ["accepted", "rejected", "reupload_requested"] as const;
-export const FILE_VARIANTS = ["original", "ela", "faceCard", "faceQr"] as const;
+export const FILE_VARIANTS = ["original", "ela", "faceCard", "faceQr", "copyMove"] as const;
 export type ReviewDecision = typeof REVIEW_DECISIONS[number];
 export type FileVariant = typeof FILE_VARIANTS[number];
 export type CaseType = keyof typeof contract.documents.caseTypes;
@@ -79,12 +82,9 @@ export interface UploadRequest {
   idNumber: string | null; reporterName: string | null;
 }
 
-export function validateUploadRequest(data: unknown): UploadRequest {
-  if (!data || typeof data !== "object" || Array.isArray(data)) throw new DocumentInputError("Missing document details.");
-  const r = data as Record<string, unknown>;
-  if (!validSubmissionId(r.submissionId)) throw new DocumentInputError("A submission reference is required.");
-  const kind = typeof r.kind === "string" ? kinds.get(r.kind) : undefined;
-  if (!kind) throw new DocumentInputError("Choose a supported document type.");
+// The file half of an upload, shared by first uploads and replacements.
+export interface FilePayload { fileName: string; contentType: string; bytes: Buffer }
+export function parseFilePayload(r: Record<string, unknown>): FilePayload {
   const contentType = typeof r.contentType === "string" ? r.contentType.trim().toLowerCase() : "";
   if (!accepted.includes(contentType)) throw new DocumentInputError("Upload a JPEG, PNG, WebP or PDF file.");
   // Bound the string before decoding so an oversized body is refused cheaply.
@@ -94,20 +94,32 @@ export function validateUploadRequest(data: unknown): UploadRequest {
   const bytes = Buffer.from(raw, "base64");
   if (!bytes.length) throw new DocumentInputError("The file is empty.");
   if (bytes.length > MAX_FILE_BYTES) throw new DocumentInputError(tooLarge());
-  let idNumber: string | null = null;
-  if (kind.idNumber && typeof r.idNumber === "string" && r.idNumber.trim()) {
-    const value = r.idNumber.trim();
-    if (value.length > 24 || !/^[0-9A-Za-z -]+$/.test(value)) throw new DocumentInputError("Enter the ID number using letters and digits only.");
-    idNumber = value;
-  }
+  return { fileName: sanitiseFileName(r.fileName), contentType, bytes };
+}
+// Format only; whether the kind takes a number is decided by the caller.
+export function parseIdNumber(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const trimmed = value.trim();
+  if (trimmed.length > 24 || !/^[0-9A-Za-z -]+$/.test(trimmed)) throw new DocumentInputError("Enter the ID number using letters and digits only.");
+  return trimmed;
+}
+
+export function validateUploadRequest(data: unknown): UploadRequest {
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new DocumentInputError("Missing document details.");
+  const r = data as Record<string, unknown>;
+  if (!validSubmissionId(r.submissionId)) throw new DocumentInputError("A submission reference is required.");
+  const kind = typeof r.kind === "string" ? kinds.get(r.kind) : undefined;
+  if (!kind) throw new DocumentInputError("Choose a supported document type.");
+  const { fileName, contentType, bytes } = parseFilePayload(r);
+  const idNumber = kind.idNumber ? parseIdNumber(r.idNumber) : null;
   let reporterName: string | null = null;
   if (typeof r.reporterName === "string" && r.reporterName.trim()) {
     reporterName = r.reporterName.trim();
     if (reporterName.length > contract.nameMax) throw new DocumentInputError("The reporter name is too long.");
   }
-  return { submissionId: r.submissionId, kind: kind.id, side: kind.side === "other_party" ? "other_party" : "reporter",
-    fileName: sanitiseFileName(r.fileName), contentType, bytes, idNumber, reporterName };
+  return { submissionId: r.submissionId, kind: kind.id, side: sideOf(kind.id), fileName, contentType, bytes, idNumber, reporterName };
 }
+export const sideOf = (kind: string) => kinds.get(kind)?.side === "other_party" ? "other_party" : "reporter";
 const tooLarge = () => "Each file must be " + Math.floor(MAX_FILE_BYTES / MIB) + " MB or smaller.";
 
 // The engine's magic-byte test, kept here so uploads are still type-checked
@@ -128,11 +140,14 @@ export function ownsDocument(record: { phoneHash?: unknown; addressHash?: unknow
 }
 
 export interface UploadQuota { count: number; bytes: number; windowStartedAt: number }
+export interface UploadLimits { files: number; bytes: number }
+export const DEFAULT_UPLOAD_LIMITS: UploadLimits = { files: UPLOADS_PER_DAY, bytes: UPLOAD_BYTES_PER_DAY };
 // Returns the charged window, or null when this upload would exceed it.
-export function chargeUploadQuota(previous: Partial<UploadQuota> | undefined, now: number, size: number): UploadQuota | null {
+export function chargeUploadQuota(previous: Partial<UploadQuota> | undefined, now: number, size: number,
+  limits: UploadLimits = DEFAULT_UPLOAD_LIMITS): UploadQuota | null {
   const live = typeof previous?.windowStartedAt === "number" && previous.windowStartedAt > now - DAY_MS;
   const count = live ? Number(previous!.count) || 0 : 0, bytes = live ? Number(previous!.bytes) || 0 : 0;
-  if (count + 1 > UPLOADS_PER_DAY || bytes + size > UPLOAD_BYTES_PER_DAY) return null;
+  if (count + 1 > limits.files || bytes + size > limits.bytes) return null;
   return { count: count + 1, bytes: bytes + size, windowStartedAt: live ? previous!.windowStartedAt! : now };
 }
 

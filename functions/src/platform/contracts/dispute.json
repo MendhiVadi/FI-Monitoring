@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-23",
+  "version": "2026-10-29",
   "descriptionMin": 20,
   "descriptionMax": 2000,
   "nameMax": 120,
@@ -911,6 +911,8 @@
           "aadhaar"
         ],
         "optional": [
+          "selfie",
+          "aadhaar_angle",
           "site_photo",
           "notice",
           "ownership_deed",
@@ -929,6 +931,8 @@
           "possession_proof"
         ],
         "optional": [
+          "selfie",
+          "aadhaar_angle",
           "encumbrance",
           "mutation",
           "survey_map",
@@ -947,6 +951,18 @@
         "side": "reporter",
         "idNumber": "aadhaar",
         "hint": "Upload the e-Aadhaar PDF from myAadhaar, or a sharp, flat photo of the side with the QR code."
+      },
+      {
+        "id": "aadhaar_angle",
+        "label": "Second photo of the Aadhaar card, tilted",
+        "side": "reporter",
+        "hint": "For a plastic (PVC) card: tilt it so the hologram catches the light. Lets staff check the hologram."
+      },
+      {
+        "id": "selfie",
+        "label": "Selfie check",
+        "side": "reporter",
+        "hint": "A short camera check that you are the person on the Aadhaar card."
       },
       {
         "id": "pan",
@@ -1021,6 +1037,26 @@
         "side": "reporter",
         "hint": ""
       }
-    ]
-  }
+    ],
+    "replacementTtlDays": 14
+  },
+  "serviceTargets": {
+    "acknowledgeDays": 3,
+    "resolveDays": 30,
+    "note": "Internal service targets for staff follow-up, not legal deadlines."
+  },
+  "staffAccess": [
+    {
+      "id": "viewer",
+      "label": "Viewer (read-only, personal data masked)"
+    },
+    {
+      "id": "officer",
+      "label": "Officer"
+    },
+    {
+      "id": "admin",
+      "label": "Administrator"
+    }
+  ]
 }

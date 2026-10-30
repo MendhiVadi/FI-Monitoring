@@ -4,8 +4,8 @@ import "../../platform/firebase";
 // Every object lives under one prefix per document, so a removal or purge is a
 // single prefix delete that also catches derived files written late.
 export const documentPrefix = (documentId: string) => "case-documents/" + documentId + "/";
-export const DERIVED_NAMES = { ela: "ela.png", faceCard: "face-card.jpg", faceQr: "face-qr.jpg" } as const;
-export const VARIANT_TYPES = { ela: "image/png", faceCard: "image/jpeg", faceQr: "image/jpeg" } as const;
+export const DERIVED_NAMES = { ela: "ela.png", faceCard: "face-card.jpg", faceQr: "face-qr.jpg", copyMove: "copy-move.png" } as const;
+export const VARIANT_TYPES = { ela: "image/png", faceCard: "image/jpeg", faceQr: "image/jpeg", copyMove: "image/png" } as const;
 
 export interface DocumentStore {
   save(path: string, bytes: Buffer, contentType: string): Promise<void>;
