@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { Step } from "./types";
 import { callFunction, loadCallables, readableCallableError } from "./callables";
 import { cardStyle, inputStyle, labelStyle, errorStyle } from "./reporting.styles";
@@ -19,6 +19,18 @@ interface PhoneVerificationProps {
   /** Re-verifying inside the form: a code goes to `phone` as soon as this
    *  mounts (unless one is still valid) and the code field takes focus. */
   reverify?: boolean;
+  /** Replaces the card's heading (the re-verify heading by default). */
+  heading?: string;
+  /** Shown under the heading, e.g. which number to use. */
+  intro?: ReactNode;
+}
+
+/** When the last code was sent and when another may be: the resend hold-off. */
+export interface OtpTimers {
+  otpSentAt: number | null;
+  setOtpSentAt: (sentAt: number | null) => void;
+  cooldownUntil: number;
+  setCooldownUntil: (until: number) => void;
 }
 
 // A custom, database-backed OTP proves the reporter controls the phone
@@ -26,7 +38,20 @@ interface PhoneVerificationProps {
 // sign-in — no auth token either. requestDisputeOtp generates and stores a
 // fresh code server-side (see functions/src/features/otp/service.ts); verifyDisputeOtp checks
 // it against that record. "submitDispute" later re-checks the same record.
-export function PhoneVerification({ step, phone, onPhoneChange, onVerified, onStepChange, reverify = false }: PhoneVerificationProps) {
+//
+// The report form keeps the resend hold-off in its draft; other pages (status
+// tracking) pass their own timers to PhoneVerificationCard, so verifying there
+// does not start or touch a report draft.
+export function PhoneVerification(props: PhoneVerificationProps) {
+  // In the draft rather than component state, so leaving the step (or the
+  // form re-mounting this card) does not reset the resend hold-off.
+  const [otpSentAt, setOtpSentAt] = useDraftField("otpSentAt");
+  const [cooldownUntil, setCooldownUntil] = useDraftField("otpCooldownUntil");
+  return <PhoneVerificationCard {...props} timers={{ otpSentAt, setOtpSentAt, cooldownUntil, setCooldownUntil }} />;
+}
+
+export function PhoneVerificationCard({ step, phone, onPhoneChange, onVerified, onStepChange, reverify = false, heading, intro, timers }: PhoneVerificationProps & { timers: OtpTimers }) {
+  const { otpSentAt, setOtpSentAt, cooldownUntil, setCooldownUntil } = timers;
   const [countryCode, setCountryCode] = useState("+91");
   const [localNumber, setLocalNumber] = useState("");
   const [code, setCode] = useState("");
@@ -36,10 +61,6 @@ export function PhoneVerification({ step, phone, onPhoneChange, onVerified, onSt
   const [announcement, setAnnouncement] = useState("");
   // Refs, not just state: two taps inside one frame both see the old state.
   const inFlight = useRef(false);
-  // In the draft rather than component state, so leaving the step (or the
-  // form re-mounting this card) does not reset the resend hold-off.
-  const [otpSentAt, setOtpSentAt] = useDraftField("otpSentAt");
-  const [cooldownUntil, setCooldownUntil] = useDraftField("otpCooldownUntil");
   const cooldownMs = useRemaining(cooldownUntil > 0 ? cooldownUntil : null) ?? 0;
   const cooldownLeft = Math.ceil(cooldownMs / 1000);
   const codeLeft = useRemaining(otpSentAt === null ? null : otpSentAt + OTP_TTL_MS);
@@ -142,11 +163,13 @@ export function PhoneVerification({ step, phone, onPhoneChange, onVerified, onSt
   }
 
   const codeExpired = codeLeft !== null && codeLeft <= 0;
+  const titled = reverify || Boolean(heading);
   const otpDescribedBy = ["otp-sent-status", error ? "otp-verification-error" : ""].filter(Boolean).join(" ");
 
   return (
-    <section style={reverify ? { ...cardStyle, marginTop: "1.25rem" } : cardStyle} aria-labelledby={reverify ? "reverify-heading" : undefined}>
-      {reverify && <h2 id="reverify-heading" style={{ marginTop: 0, fontSize: "1.15rem" }}>Verify your number again</h2>}
+    <section style={titled ? { ...cardStyle, marginTop: "1.25rem" } : cardStyle} aria-labelledby={titled ? "reverify-heading" : undefined}>
+      {titled && <h2 id="reverify-heading" style={{ marginTop: 0, fontSize: "1.15rem" }}>{heading ?? "Verify your number again"}</h2>}
+      {intro && <p className="report-hint" style={{ fontSize: "0.95rem" }}>{intro}</p>}
       <p role="status" className="report-sr-only">{announcement}</p>
       {step === "phone" ? (
         <form onSubmit={sendFromPhoneStep} noValidate>

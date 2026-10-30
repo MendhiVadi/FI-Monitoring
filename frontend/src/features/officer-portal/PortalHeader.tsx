@@ -3,23 +3,31 @@ import { Link } from "react-router-dom";
 import { useStaffSession } from "../auth/staffSession";
 import { SessionExpiryBanner } from "../auth/SessionExpiryBanner";
 import { PortalClock } from "./PortalClock";
-import { initialsFrom } from "./presentation";
+import { ReadOnlyBanner } from "./ReadOnlyBanner";
+import { accessLabel, initialsFrom } from "./presentation";
 import { styles } from "./portal.styles";
 
 const sessionEnd = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true });
+export type PortalPage = "registry" | "insights";
+const PAGES: { page: PortalPage; to: string; label: string }[] = [
+  { page: "registry", to: "/officer-portal", label: "Cases" },
+  { page: "insights", to: "/officer-portal/insights", label: "Insights" },
+];
 
 // Full header on wider screens; on phones a single row with one avatar button
-// whose menu holds the account, the public-site link and sign-out.
-export function PortalHeader({ officerEmail, onLogout, confirmLeave }: {
-  officerEmail: string | null; onLogout: () => void; confirmLeave: () => boolean;
+// whose menu holds the account, the portal pages, the public-site link and sign-out.
+export function PortalHeader({ officerEmail, onLogout, confirmLeave, current = "registry" }: {
+  officerEmail: string | null; onLogout: () => void; confirmLeave: () => boolean; current?: PortalPage;
 }) {
-  const { expiresAt } = useStaffSession();
-  // Leaving the portal drops unsaved note and reason drafts, as signing out does.
+  const { expiresAt, access, displayName, role } = useStaffSession();
+  // Leaving the registry drops unsaved note and reason drafts, as signing out does.
   // A modified click opens a new tab and keeps this page, so it needs no prompt.
   const guardLeave = (event: MouseEvent) => {
     if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && !confirmLeave()) event.preventDefault();
   };
   const initials = initialsFrom(officerEmail);
+  // Access level first; the free-text role label (e.g. a post) after it.
+  const accountLine = [accessLabel(access), role].filter(Boolean).join(" · ");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null), toggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -30,6 +38,9 @@ export function PortalHeader({ officerEmail, onLogout, confirmLeave }: {
     document.addEventListener("keydown", onKey);
     return () => { document.removeEventListener("pointerdown", onPointer); document.removeEventListener("keydown", onKey); };
   }, [menuOpen]);
+  const pageLinks = (onNavigate?: (event: MouseEvent) => void) => PAGES.map(({ page, to, label }) => page === current
+    ? <Link key={page} to={to} aria-current="page" className="portal-nav-link">{label}</Link>
+    : <Link key={page} to={to} className="portal-nav-link" onClick={event => { guardLeave(event); if (!event.defaultPrevented) onNavigate?.(event); }}>{label}</Link>);
 
   return (
     <header className="portal-header" style={styles.portalHeader}>
@@ -55,6 +66,7 @@ export function PortalHeader({ officerEmail, onLogout, confirmLeave }: {
         </div>
 
         <div className="portal-header-full">
+          <nav aria-label="Staff portal" className="portal-nav">{pageLinks()}</nav>
           {/* Realtime clock */}
           <div style={styles.headerTimeBox}>
             <span aria-hidden="true" style={{ color: "#22c55e", marginRight: "6px" }}>●</span>
@@ -65,11 +77,14 @@ export function PortalHeader({ officerEmail, onLogout, confirmLeave }: {
           {/* Staff account */}
           <div style={styles.officerProfilePill}>
             <div style={styles.avatarCircle} aria-hidden="true">{initials}</div>
-            <div style={{ textAlign: "left", fontSize: "0.75rem", lineHeight: 1.2 }}>
-              <div style={{ fontWeight: 700, color: "#f3f4f6" }}>Signed in</div>
-              <div style={{ color: "#9ca3af", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={officerEmail ?? undefined}>
+            <div style={{ textAlign: "left", fontSize: "0.75rem", lineHeight: 1.2, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: "#f3f4f6", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName ?? undefined}>
+                {displayName || "Signed in"}
+              </div>
+              <div style={{ color: "#9ca3af", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={officerEmail ?? undefined}>
                 {officerEmail}
               </div>
+              <div className="portal-account-access" title={accountLine}>{accountLine}</div>
             </div>
           </div>
 
@@ -99,15 +114,19 @@ export function PortalHeader({ officerEmail, onLogout, confirmLeave }: {
           {menuOpen && (
             <div id="portal-account-menu" ref={menuRef} className="portal-menu">
               <div style={{ padding: "0.4rem 0.75rem 0.5rem", fontSize: "0.8rem", color: "#cbd5e1", overflowWrap: "anywhere" }}>
+                {displayName && <div style={{ fontWeight: 700, color: "#f3f4f6" }}>{displayName}</div>}
                 {officerEmail}
+                <div style={{ color: "#94a3b8", marginTop: 2 }}>{accountLine}</div>
                 {expiresAt && <div style={{ color: "#94a3b8", marginTop: 2 }}>Session ends {sessionEnd.format(new Date(expiresAt))} IST</div>}
               </div>
+              <nav aria-label="Staff portal" className="portal-menu-nav">{pageLinks(() => setMenuOpen(false))}</nav>
               <Link to="/" onClick={(event) => { guardLeave(event); if (!event.defaultPrevented) setMenuOpen(false); }}>Public site</Link>
               <button type="button" style={{ color: "#fca5a5" }} onClick={() => { setMenuOpen(false); onLogout(); }}>Sign out</button>
             </div>
           )}
         </div>
       </div>
+      {access === "viewer" && <ReadOnlyBanner />}
       <SessionExpiryBanner />
     </header>
   );

@@ -3,7 +3,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 import { Header } from "./layout/Header";
 import { Footer } from "./layout/Footer";
 import { ErrorPage } from "../shared/ui/ErrorPage";
-import { isChunkLoadError, loadLogin, loadReportIssue, reloadForNewBuild } from "./routeChunks";
+import { isChunkLoadError, loadLogin, loadReportIssue, loadTrackCase, reloadForNewBuild } from "./routeChunks";
 
 // Home is lazy like every other route. Importing it eagerly pulled three.js,
 // React Three Fiber, drei and GSAP into the entry chunk, so an officer opening
@@ -11,10 +11,12 @@ import { isChunkLoadError, loadLogin, loadReportIssue, reloadForNewBuild } from 
 const Home = lazy(() => import("../features/home/Home").then((m) => ({ default: m.Home })));
 const FraMonitoring = lazy(() => import("../features/fra-demo/FraMonitoring").then(m => ({ default: m.FraMonitoring })));
 const ReportIssue = lazy(() => loadReportIssue().then((m) => ({ default: m.ReportIssue })));
+const TrackCase = lazy(() => loadTrackCase().then((m) => ({ default: m.TrackCase })));
 const Tickets = lazy(() => import("../features/tickets/Tickets").then((m) => ({ default: m.Tickets })));
 const Login = lazy(() => loadLogin().then((m) => ({ default: m.Login })));
 const ProtectedRoute = lazy(() => import("../features/auth/ProtectedRoute").then((m) => ({ default: m.ProtectedRoute })));
 const OfficerPortal = lazy(() => import("../features/officer-portal/OfficerPortal").then((m) => ({ default: m.OfficerPortal })));
+const Insights = lazy(() => import("../features/officer-portal/Insights").then((m) => ({ default: m.Insights })));
 const PrivacyPolicy = lazy(() => import("../features/legal/PrivacyPolicy").then((m) => ({ default: m.PrivacyPolicy })));
 const TermsOfUse = lazy(() => import("../features/legal/TermsOfUse").then((m) => ({ default: m.TermsOfUse })));
 const Accessibility = lazy(() => import("../features/legal/Accessibility").then((m) => ({ default: m.Accessibility })));
@@ -28,10 +30,12 @@ const SITE_NAME = "Land Dispute";
 const PAGE_NAMES: Record<string, string> = {
   "/": "",
   "/report": "Report a dispute",
+  "/track": "Track a report",
   "/fra-monitoring": "FRA claims demonstration",
   "/login": "Staff sign-in",
   "/tickets": "Case tickets",
   "/officer-portal": "Staff portal",
+  "/officer-portal/insights": "Staff insights",
   "/portal": "Staff portal",
   "/privacy-policy": "Privacy policy",
   "/terms-of-use": "Terms of use",
@@ -172,13 +176,19 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/report" element={<ReportIssue />} />
+          {/* Public: shows status and document requests only, never PII. */}
+          <Route path="/track" element={<TrackCase />} />
           <Route path="/fra-monitoring" element={<FraMonitoring />} />
           <Route path="/login" element={<Login />} />
           {/* Lists every dispute ticket, including reporter PII — officer-only,
               matching the read rule enforced in firestore.rules. */}
           <Route path="/tickets" element={<ProtectedRoute><Tickets /></ProtectedRoute>} />
-          <Route path="/officer-portal" element={<ProtectedRoute><OfficerPortal /></ProtectedRoute>} />
-          <Route path="/portal" element={<ProtectedRoute><OfficerPortal /></ProtectedRoute>} />
+          {/* Viewers browse a masked registry through the callables (firestore.rules
+              deny them raw ticket reads); every write inside stays officer+. */}
+          <Route path="/officer-portal" element={<ProtectedRoute minAccess="viewer"><OfficerPortal /></ProtectedRoute>} />
+          {/* Aggregate counts only, so read-only viewers may open it too. */}
+          <Route path="/officer-portal/insights" element={<ProtectedRoute minAccess="viewer"><Insights /></ProtectedRoute>} />
+          <Route path="/portal" element={<ProtectedRoute minAccess="viewer"><OfficerPortal /></ProtectedRoute>} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms-of-use" element={<TermsOfUse />} />
           <Route path="/accessibility" element={<Accessibility />} />

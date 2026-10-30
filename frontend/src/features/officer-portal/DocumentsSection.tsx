@@ -1,25 +1,30 @@
 import { useState } from "react";
-import type { Ticket } from "../tickets/types";
+import type { MaskedCaseDocument, Ticket } from "../tickets/types";
 import { caseTypeForParty, caseTypeLabel, isFlagged, kindLabel, missingRequiredKinds } from "../tickets/caseDocuments";
 import { useCaseDocuments } from "../tickets/useCaseDocuments";
-import { DocumentCard } from "./DocumentCard";
+import { DocumentCard, MaskedDocumentCard } from "./DocumentCard";
 import { styles } from "./portal.styles";
 
 // Uploaded papers with their automatic screening. Flags only point staff at
 // what to look at; nothing here accepts or rejects the case by itself.
-export function DocumentsSection({ ticket, currentUid, onNotice }: {
+// `masked` is the viewer's list from getMaskedCase: no raw reads, files or review form.
+export function DocumentsSection({ ticket, currentUid, onNotice, masked }: {
   ticket: Ticket;
   currentUid: string | undefined;
   onNotice: (message: string) => void;
+  masked: MaskedCaseDocument[] | null;
 }) {
   const summary = ticket.documents;
   const [attempt, setAttempt] = useState(0);
   // Cases filed before uploads have no documents to subscribe to.
-  const { documents, loading, error } = useCaseDocuments(summary ? ticket.id : null, attempt);
+  const live = useCaseDocuments(summary && !masked ? ticket.id : null, attempt);
+  const { loading, error } = live;
+  const documents: { kind: string }[] = masked ?? live.documents;
   const caseType = summary?.caseType ?? caseTypeForParty(ticket.dispute?.otherPartyType);
   const missing = missingRequiredKinds(caseType, [...(summary?.kinds ?? []), ...documents.map(document => document.kind)]);
   const count = loading || error ? summary?.count ?? 0 : documents.length;
-  const flagged = loading || error ? summary?.flagged ?? 0 : documents.filter(isFlagged).length;
+  const flagged = loading || error ? summary?.flagged ?? 0
+    : masked ? masked.filter(document => document.risk === "high" || document.risk === "altered").length : live.documents.filter(isFlagged).length;
 
   return (
     <section style={styles.modalSectionCard} aria-labelledby="dossier-documents" className="dossier-documents">
@@ -60,9 +65,13 @@ export function DocumentsSection({ ticket, currentUid, onNotice }: {
           <span className="sr-only">Loading documents…</span>
           <div className="portal-skeleton" style={{ height: 96 }} />
         </div>
-      ) : documents.length > 0 ? (
+      ) : masked && masked.length > 0 ? (
         <ul className="doc-list">
-          {documents.map(document => <DocumentCard key={document.id} document={document} currentUid={currentUid} onNotice={onNotice} />)}
+          {masked.map(document => <MaskedDocumentCard key={document.id} document={document} />)}
+        </ul>
+      ) : live.documents.length > 0 ? (
+        <ul className="doc-list">
+          {live.documents.map(document => <DocumentCard key={document.id} document={document} currentUid={currentUid} onNotice={onNotice} />)}
         </ul>
       ) : summary ? (
         <p style={styles.fieldHint}>No stored documents. They may have been removed after the retention period.</p>

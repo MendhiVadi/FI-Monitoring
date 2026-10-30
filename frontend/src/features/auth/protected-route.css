@@ -1,0 +1,38 @@
+/* Staff route gate: the session check and the "needs more access" notice. */
+.staff-gate {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: #cbd5e1;
+  padding: 0 var(--space-4);
+}
+.staff-gate__status { display: flex; align-items: center; gap: 0.6rem; margin: 0; }
+.staff-gate__card {
+  max-width: 32rem;
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.staff-gate__card h1 { font-size: 1.3rem; color: var(--text); margin: 0 0 var(--space-2); }
+.staff-gate__card p { margin: 0 0 var(--space-4); line-height: 1.5; color: #cbd5e1; }
+.staff-gate__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.staff-gate__btn {
+  min-height: var(--tap-target);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.staff-gate__btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.staff-gate__btn--primary:hover { background: var(--accent-hover); }

@@ -13,7 +13,19 @@ export interface DisputeInput {
   evidenceReferences: string[];
 }
 export const DAY_MS = 86_400_000;
+// Per reporter (verified phone, or a guest's address) — unchanged in wave 2.
+export const REPORTS_PER_REPORTER_DAY = 5;
+// Default of the REPORTS_PER_IP_DAY param (platform/limits.ts): one carrier
+// NAT address can front many reporters, so the connection cap is higher.
+export const REPORTS_PER_ADDRESS_DAY = 20;
 const districts: Record<string, string[]> = contract.districts;
+
+// Internal service targets (contract.serviceTargets) stamped on each new case;
+// the escalation job compares them with firstActionAt. Not legal deadlines.
+export function serviceTargets(now: number) {
+  return { ackDueAt: now + contract.serviceTargets.acknowledgeDays * DAY_MS,
+    resolveDueAt: now + contract.serviceTargets.resolveDays * DAY_MS, firstActionAt: null, overdue: null };
+}
 
 function field(record: Record<string, unknown>, key: string, min: number, max: number): string {
   const value = typeof record[key] === "string" ? (record[key] as string).trim() : "";
@@ -52,9 +64,11 @@ export function validateDisputeInput(data: unknown): DisputeInput {
 export async function submitDisputeTransaction(db: admin.firestore.Firestore, options: {
   input: DisputeInput; phone: string; token: string; submissionId: string; address: string;
   requireOtp: boolean; consent: boolean; consentVersion: string; whatsappUpdates: boolean; secret: string; documentIds?: string[];
+  addressLimit?: number;
 }): Promise<{ ticketId: string; replayed: boolean }> {
   const { input, phone, token, submissionId, address, requireOtp, consent, consentVersion, whatsappUpdates, secret } = options;
   const documentIds = [...new Set(options.documentIds ?? [])];
+  const addressCap = Number.isInteger(options.addressLimit) && options.addressLimit! > 0 ? options.addressLimit! : REPORTS_PER_ADDRESS_DAY;
   if (documentIds.length > MAX_FILES) throw new HttpsError("invalid-argument", "Attach up to " + MAX_FILES + " uploaded documents.");
   if (!/^[a-zA-Z0-9_-]{20,80}$/.test(submissionId)) throw new HttpsError("invalid-argument", "A submission reference is required.");
   if (!consent || consentVersion !== contract.version) throw new HttpsError("invalid-argument", "Accept the current privacy notice before submitting.");
@@ -85,13 +99,16 @@ export async function submitDisputeTransaction(db: admin.firestore.Firestore, op
     const now = Date.now();
     const count = previous && previous.windowStartedAt > now - DAY_MS ? Number(previous.count) || 0 : 0;
     const addressCount = previousAddress && previousAddress.windowStartedAt > now - DAY_MS ? Number(previousAddress.count) || 0 : 0;
-    if (count >= 5 || addressCount >= 5) throw new HttpsError("resource-exhausted", "Five reports were submitted in the last daily window from this number or connection. Try again later.");
+    if (count >= REPORTS_PER_REPORTER_DAY) throw new HttpsError("resource-exhausted", "Five reports were submitted in the last daily window from this number or connection. Try again later.");
+    if (addressCount >= addressCap) throw new HttpsError("resource-exhausted", "Too many reports were submitted from this connection in the last day. Try again later.");
     // Uploads are bound to the verified phone, or for guests to the address
     // bucket, so another caller's submissionId cannot claim them.
     const caller = { phoneHash: verified ? hashId(phone) : null, addressHash: hashId(addressBucket(address)) };
     const documents = snapshots.slice(known.length).map(snapshot => snapshot.data());
+    // A replacement for an existing case (status/handlers) is attached by that
+    // flow only, never by a new report reusing the original submissionId.
     if (documents.some(doc => !doc || doc.submissionId !== submissionId || doc.status !== "pending" || !(doc.expiresAt > now) ||
-        !(verified ? doc.phoneHash === caller.phoneHash : ownsDocument(doc, caller)))) {
+        doc.replacementFor || !(verified ? doc.phoneHash === caller.phoneHash : ownsDocument(doc, caller)))) {
       throw new HttpsError("failed-precondition", "One or more uploaded documents expired or are no longer available. Upload them again; your draft is kept.");
     }
     // An upload still being screened has no risk yet (the ticket's flagged
@@ -111,6 +128,8 @@ export async function submitDisputeTransaction(db: admin.firestore.Firestore, op
       messages: [], status: "open", source: "web-dispute-form", dispute: input,
       revision: 0, noteCount: 0, createdAt: stamp, updatedAt: stamp,
       documents: documentSummary(caseType, documents.map(doc => ({ kind: doc!.kind, risk: doc!.screening?.risk }))),
+      // Stored as explicit nulls so "unassigned" and "not overdue" are queryable.
+      ...serviceTargets(now), assignedTo: null, assignedEmail: null, assignedName: null, assignedAt: null, openDocumentRequests: 0,
     });
     for (const ref of documentRefs) tx.update(ref, { status: "attached", ticketId: ticket.id, expiresAt: null });
     if (verified && grant) tx.update(grant, { used: true, ticketId: ticket.id });

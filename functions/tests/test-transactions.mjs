@@ -22,8 +22,10 @@ const { deliverTicketNotification } = require("../lib/features/whatsapp/delivery
 const { recordReceipt, stopNotifications } = require("../lib/features/whatsapp/receipts.js");
 const { reserveGeocodeSlot, releaseGeocodeSlot } = require("../lib/features/maps/geocode.js");
 const { hashId, addressBucket } = require("../lib/features/otp/identity.js");
-const { uploadCaseDocument, removeCaseDocument, purgeDocumentBatch, drainPurgeQueue } = require("../lib/features/documents/service.js");
+const { uploadCaseDocument, removeCaseDocument, purgeDocumentBatch, drainPurgeQueue, replaceCaseDocument, purgeDocumentRequests } = require("../lib/features/documents/service.js");
 const { validateUploadRequest } = require("../lib/features/documents/rules.js");
+const { lookupCaseStatus } = require("../lib/features/status/service.js");
+const { validateReplacementRequest } = require("../lib/features/status/rules.js");
 const contract = require("../lib/platform/contracts/dispute.json");
 const secret = process.env.DISPUTE_OTP_SECRET;
 const input = validateDisputeInput({ reporterName: "Synthetic reporter", reporterType: contract.reporterTypes[0], otherPartyName: "Synthetic party", otherPartyType: contract.partyTypes[0], disputeType: contract.disputeTypes[0], state: "Maharashtra", district: "Pune", village: "", description: "Synthetic regression case; not an actual dispute.", location: { latitude: 18.52, longitude: 73.85 }, locationConfirmed: true });
@@ -55,8 +57,13 @@ async function options(phone = "+12025550" + String(++phoneIndex).padStart(3, "0
 const documentStatus = async ids => (await db.getAll(...ids.map(id => db.collection("caseDocuments").doc(id)))).map(snapshot => snapshot.data()?.status);
 const auth = { uid: "synthetic-officer", token: { email: "staff@example.invalid", auth_time: Math.floor(Date.now() / 1000) } };
 const request = data => ({ auth, data });
+const viewer = { uid: "synthetic-viewer", token: { email: "viewer@example.invalid", auth_time: auth.token.auth_time } };
+// Spec: every new staff write carries the officer's uid, email, name (or null) and role label.
+const STAFF = { officerUid: auth.uid, officerEmail: auth.token.email, officerName: "Synthetic Officer", officerRole: "Synthetic DFO" };
+const staffOf = data => ({ officerUid: data.officerUid, officerEmail: data.officerEmail, officerName: data.officerName, officerRole: data.officerRole });
 test.before(async () => {
-  await db.collection("officers").doc(auth.uid).set({ email: auth.token.email });
+  await db.collection("officers").doc(auth.uid).set({ email: auth.token.email, displayName: STAFF.officerName, role: STAFF.officerRole });
+  await db.collection("officers").doc(viewer.uid).set({ email: viewer.token.email, access: "viewer" });
 });
 test.after(async () => { global.fetch = originalFetch; await db.terminate(); await admin.app().delete(); });
 
@@ -115,8 +122,11 @@ test("parallel guest submissions enforce the daily quota inside the transaction"
 });
 
 test("changing verified phones cannot bypass the shared connection quota", async () => {
+  // Twenty reports per connection per day (REPORTS_PER_IP_DAY default): start five short of it.
+  const address = "192.0.2.40";
+  await db.collection("reporterLimits").doc("ip-" + hashId(addressBucket(address))).set({ count: 15, windowStartedAt: Date.now() - 1000 });
   const submissions = await Promise.all(Array.from({ length: 6 }, () => options()));
-  const results = await Promise.allSettled(submissions.map(data => submitDisputeTransaction(db, { ...data, address: "192.0.2.40" })));
+  const results = await Promise.allSettled(submissions.map(data => submitDisputeTransaction(db, { ...data, address })));
   assert.equal(results.filter(result => result.status === "fulfilled").length, 5);
   const rejectedIndex = results.findIndex(result => result.status === "rejected");
   assert.equal(results[rejectedIndex].reason.code, "resource-exhausted");
@@ -181,8 +191,10 @@ test("status changes detect conflicts, reject prototype keys and record immutabl
   assert.equal(results.find(result => result.status === "rejected").reason.code, "aborted");
   const events = await ref.collection("events").get();
   assert.equal(events.size, 1); assert.equal(events.docs[0].data().reason, "Synthetic review");
-  assert.equal(events.docs[0].data().officerUid, auth.uid);
+  assert.deepEqual(staffOf(events.docs[0].data()), STAFF);
   assert.ok(events.docs[0].data().at instanceof admin.firestore.Timestamp);
+  assert.equal(typeof (await ref.get()).data().firstActionAt, "number");
+  await assert.rejects(handlers.updateTicketStatus.run({ auth: viewer, data: { ...data, expectedRevision: 1, requestId: randomUUID() } }), { code: "permission-denied" });
 });
 
 test("notes preserve repeated text as separate entries and retries stay idempotent", async () => {
@@ -191,7 +203,9 @@ test("notes preserve repeated text as separate entries and retries stay idempote
   const data = { ticketId: ref.id, note: "Synthetic note repeated intentionally", requestId: randomUUID() };
   await Promise.all([handlers.addTicketNote.run(request(data)), handlers.addTicketNote.run(request(data))]);
   await handlers.addTicketNote.run(request({ ...data, requestId: randomUUID() }));
-  assert.equal((await ref.collection("notes").get()).size, 2);
+  const notes = await ref.collection("notes").get();
+  assert.equal(notes.size, 2);
+  for (const note of notes.docs) assert.deepEqual(staffOf(note.data()), STAFF);
   assert.equal((await ref.get()).data().noteCount, 2);
   assert.equal((await ref.get()).data().officerNotes, undefined);
 });
@@ -319,15 +333,34 @@ test("document reviews are idempotent, recorded as case events and limited to at
   const [attached, pending] = await seedDocuments({ submissionId: randomUUID(), kinds: ["aadhaar", "pan"] });
   await db.collection("caseDocuments").doc(attached).update({ status: "attached", ticketId: ref.id, expiresAt: null });
   const data = { documentId: attached, decision: "reupload_requested", reason: "Synthetic: QR unreadable", requestId: randomUUID() };
+  await assert.rejects(handlers.reviewCaseDocument.run({ auth: viewer, data }), { code: "permission-denied" });
+  const before = Date.now();
   const results = await Promise.all([handlers.reviewCaseDocument.run(request(data)), handlers.reviewCaseDocument.run(request(data))]);
   for (const result of results) assert.equal(result.review.decision, "reupload_requested");
   const events = await ref.collection("events").get();
   assert.equal(events.size, 1);
   assert.deepEqual({ ...events.docs[0].data(), at: undefined }, { type: "document_review", documentId: attached, kind: "aadhaar", decision: "reupload_requested",
-    reason: data.reason, actorUid: auth.uid, officerUid: auth.uid, at: undefined, revision: 1 });
-  assert.equal((await ref.get()).data().revision, 1);
+    reason: data.reason, actorUid: auth.uid, ...STAFF, at: undefined, revision: 1 });
+  const ticket = (await ref.get()).data();
+  assert.equal(ticket.revision, 1); assert.equal(ticket.openDocumentRequests, 1); assert.ok(ticket.firstActionAt >= before);
   const saved = (await db.collection("caseDocuments").doc(attached).get()).data().review;
   assert.equal(saved.by, auth.uid); assert.equal(saved.byEmail, auth.token.email); assert.ok(saved.at instanceof admin.firestore.Timestamp);
+  assert.deepEqual(staffOf(saved), STAFF);
+  // The re-upload request is keyed by the review's requestId and lives for replacementTtlDays.
+  const opened = (await db.collection("documentRequests").doc(data.requestId).get()).data();
+  assert.ok(opened.requestedAt >= before);
+  assert.deepEqual(opened, { ticketId: ref.id, documentId: attached, kind: "aadhaar", requestedAt: opened.requestedAt,
+    expiresAt: opened.requestedAt + contract.documents.replacementTtlDays * 86_400_000, fulfilledAt: null, fulfilledDocumentId: null });
+  // The stored review carries the same server expiry, for the dossier.
+  assert.equal(saved.expiresAt, opened.expiresAt);
+  for (const result of results) assert.equal(result.review.expiresAt, opened.expiresAt);
+  // Asking again while that request is open records the review but opens no
+  // second request; the review keeps the open request's deadline.
+  const again = { ...data, requestId: randomUUID() };
+  await handlers.reviewCaseDocument.run(request(again));
+  assert.equal((await db.collection("documentRequests").doc(again.requestId).get()).exists, false);
+  assert.equal((await ref.get()).data().openDocumentRequests, 1);
+  assert.equal((await db.collection("caseDocuments").doc(attached).get()).data().review.expiresAt, opened.expiresAt);
   await assert.rejects(handlers.reviewCaseDocument.run(request({ ...data, documentId: pending, requestId: randomUUID() })), { code: "failed-precondition" });
   for (const bad of [{ reason: "no" }, { decision: "approved" }]) await assert.rejects(handlers.reviewCaseDocument.run(request({ ...data, ...bad, requestId: randomUUID() })), { code: "invalid-argument" });
   // A change reference cannot be replayed against another document.
@@ -387,9 +420,17 @@ test("the connection quota holds, and screening or storage failures never leave 
   const store = memoryStore(), address = "192.0.2.81", submissionId = randomUUID();
   const guest = { phone: "", token: "", address, requireOtp: false, secret };
   const quota = db.collection("documentUploadLimits").doc(hashId(addressBucket(address)));
-  await quota.set({ count: 40, bytes: 0, windowStartedAt: Date.now() - 1000 });
-  await assert.rejects(uploadCaseDocument(db, { store, engine: fakeEngine(), uidaiCertPem: null }, uploadRequest(submissionId), guest), { code: "resource-exhausted" });
-  await quota.set({ count: 40, bytes: 0, windowStartedAt: Date.now() - 86_400_001 });
+  // 150 files / 300 MiB per connection per day (UPLOADS_PER_IP_DAY / UPLOAD_BYTES_PER_IP_DAY_MIB defaults).
+  const MIB = 1024 * 1024, deps = { store, engine: fakeEngine(), uidaiCertPem: null };
+  await quota.set({ count: 150, bytes: 0, windowStartedAt: Date.now() - 1000 });
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId), guest), { code: "resource-exhausted" });
+  await quota.set({ count: 0, bytes: 300 * MIB - JPEG.length + 1, windowStartedAt: Date.now() - 1000 });
+  await assert.rejects(uploadCaseDocument(db, deps, uploadRequest(submissionId), guest), { code: "resource-exhausted" });
+  await quota.set({ count: 149, bytes: 300 * MIB - JPEG.length, windowStartedAt: Date.now() - 1000 });
+  const last = await uploadCaseDocument(db, deps, uploadRequest(submissionId), guest);
+  assert.equal((await quota.get()).data().count, 150);
+  await removeCaseDocument(db, store, { submissionId, documentId: last.documentId }, guest);
+  await quota.set({ count: 150, bytes: 300 * MIB, windowStartedAt: Date.now() - 86_400_001 });
   const broken = { ...fakeEngine(), screenDocument: async () => { throw new Error("Synthetic engine crash"); } };
   const saved = await uploadCaseDocument(db, { store, engine: broken, uidaiCertPem: null }, uploadRequest(submissionId), guest);
   assert.deepEqual(saved.screening, { state: "error", userMessages: [] });
@@ -424,4 +465,144 @@ test("the purge removes lapsed uploads and closed-case files but spares reopened
   assert.equal((await db.collection("documentPurges").doc(stuck).get()).exists, true);
   await drainPurgeQueue(db, store);
   assert.equal((await db.collection("documentPurges").doc(stuck).get()).exists, false);
+});
+
+// A submitted case whose flagged Aadhaar copy staff asked to be uploaded again.
+async function caseWithRequest({ guest = false } = {}) {
+  const submissionId = randomUUID();
+  const data = guest
+    ? { input, phone: "", token: "", address: "192.0.2.95", requireOtp: false, consent: true, consentVersion: contract.version, whatsappUpdates: false, secret,
+      submissionId, documentIds: await seedDocuments({ submissionId, address: "192.0.2.95" }) }
+    : { ...(await options()), address: "192.0.2.90" };
+  await db.collection("caseDocuments").doc(data.documentIds[0]).update({ "screening.risk": "altered" });
+  const { ticketId } = await submitDisputeTransaction(db, data);
+  const requestId = randomUUID();
+  await handlers.reviewCaseDocument.run(request({ documentId: data.documentIds[0], decision: "reupload_requested", reason: "Synthetic: photo blurred", requestId }));
+  return { ...data, ticketId, requestId, previousId: data.documentIds[0] };
+}
+async function freshGrant(phone) {
+  const verified = await confirmOtp(db, phone, await issueOtp(db, phone, secret), secret);
+  assert.equal(verified.ok, true);
+  return verified.token;
+}
+const REPLACEMENT_ADDRESS = "192.0.2.91";
+function replace(deps, filed, token, { phone = filed.phone, requestId = filed.requestId } = {}) {
+  const parsed = validateReplacementRequest({ reference: filed.ticketId, requestId, phone, verificationToken: token,
+    fileName: "replacement.jpg", contentType: "image/jpeg", dataBase64: JPEG.toString("base64") });
+  return replaceCaseDocument(db, deps, parsed.upload, { phone: parsed.phone, token: parsed.token, address: REPLACEMENT_ADDRESS, secret });
+}
+const replacementsFor = async requestId => (await db.collection("caseDocuments").where("replacementFor", "==", requestId).get()).size;
+
+test("replacement uploads need the filing phone's unspent grant and an open request, then supersede the old copy", async () => {
+  const store = memoryStore(), deps = { store, engine: fakeEngine(), uidaiCertPem: null };
+  const filed = await caseWithRequest();
+  assert.equal((await db.collection("tickets").doc(filed.ticketId).get()).data().documents.flagged, 1);
+  // The filing grant was spent by the submission.
+  await assert.rejects(replace(deps, filed, filed.token), { code: "unauthenticated" });
+  const token = await freshGrant(filed.phone);
+  const stranger = "+12025550997", strangerToken = await freshGrant(stranger);
+  await assert.rejects(replace(deps, filed, strangerToken, { phone: stranger }), { code: "permission-denied" });
+  await assert.rejects(replace(deps, filed, strangerToken), { code: "unauthenticated" });
+  await assert.rejects(replace(deps, filed, token, { requestId: randomUUID() }), { code: "not-found" });
+  assert.equal(await replacementsFor(filed.requestId), 0);
+  const result = await replace(deps, filed, token);
+  assert.deepEqual(result.screening, { state: "done", userMessages: ["Synthetic message"] });
+  const read = async (name, id) => (await db.collection(name).doc(id).get()).data();
+  const fresh = await read("caseDocuments", result.documentId), old = await read("caseDocuments", filed.previousId);
+  assert.equal(fresh.status, "attached"); assert.equal(fresh.ticketId, filed.ticketId); assert.equal(fresh.expiresAt, null);
+  assert.equal(fresh.replaces, filed.previousId); assert.equal(fresh.supersededBy, null); assert.equal(fresh.kind, old.kind);
+  assert.equal(old.status, "attached"); assert.equal(old.supersededBy, result.documentId);
+  const answered = await read("documentRequests", filed.requestId);
+  assert.equal(typeof answered.fulfilledAt, "number"); assert.equal(answered.fulfilledDocumentId, result.documentId);
+  // The summary now describes the current copy, so the replaced flag no longer counts.
+  const ticket = await read("tickets", filed.ticketId);
+  assert.equal(ticket.openDocumentRequests, 0);
+  assert.deepEqual(ticket.documents, { caseType: "person_vs_person", count: PERSON_KINDS.length, kinds: PERSON_KINDS, flagged: 0 });
+  const event = await read("tickets/" + filed.ticketId + "/events", "replaced_" + filed.requestId);
+  assert.deepEqual({ ...event, at: undefined }, { type: "document_replaced", kind: old.kind, requestId: filed.requestId, documentId: result.documentId, at: undefined });
+  assert.ok(event.at instanceof admin.firestore.Timestamp);
+  // Checked, not spent: the same grant still answers another request.
+  assert.equal((await read("disputeVerifications", verificationKey(token, secret))).used, false);
+  await assert.rejects(replace(deps, filed, token), { code: "failed-precondition" });
+  assert.equal(await replacementsFor(filed.requestId), 1);
+  // Staff can no longer ask for the superseded copy.
+  await assert.rejects(handlers.reviewCaseDocument.run(request({ documentId: filed.previousId, decision: "reupload_requested", reason: "Synthetic: again", requestId: randomUUID() })),
+    { code: "failed-precondition" });
+});
+
+test("expired requests and guest cases cannot take a replacement", async () => {
+  const store = memoryStore(), deps = { store, engine: fakeEngine(), uidaiCertPem: null };
+  const filed = await caseWithRequest();
+  await db.collection("documentRequests").doc(filed.requestId).update({ expiresAt: Date.now() - 1 });
+  await assert.rejects(replace(deps, filed, await freshGrant(filed.phone)), { code: "failed-precondition" });
+  assert.equal(await replacementsFor(filed.requestId), 0);
+  // A guest filed without a verified phone, so no phone can prove it owns the case.
+  const guest = await caseWithRequest({ guest: true });
+  assert.match((await db.collection("tickets").doc(guest.ticketId).get()).data().reporterUid, /^guest-/);
+  const phone = "+12025550996";
+  await assert.rejects(replace(deps, guest, await freshGrant(phone), { phone }), { code: "permission-denied" });
+  assert.equal(await replacementsFor(guest.requestId), 0);
+  assert.equal((await db.collection("tickets").doc(guest.ticketId).get()).data().openDocumentRequests, 1);
+});
+
+test("the public status lookup returns status, dates and open requests only, charged per connection", async () => {
+  const filed = await caseWithRequest();
+  await handlers.updateTicketStatus.run(request({ ticketId: filed.ticketId, status: "investigating", reason: "Synthetic private reason",
+    expectedRevision: 1, requestId: randomUUID() }));
+  const address = "192.0.2.100";
+  const status = await lookupCaseStatus(db, filed.ticketId, address, 3);
+  assert.deepEqual(Object.keys(status).sort(), ["documentRequests", "filedAt", "lastUpdatedAt", "reference", "statusId", "statusLabel", "timeline"]);
+  assert.equal(status.reference, filed.ticketId); assert.equal(status.statusId, "investigating");
+  assert.equal(status.timeline.length, 2); assert.equal(status.timeline[1].statusLabel, status.statusLabel);
+  assert.ok(status.filedAt > 0 && status.lastUpdatedAt >= status.filedAt);
+  const [open] = status.documentRequests;
+  assert.equal(status.documentRequests.length, 1);
+  assert.deepEqual(Object.keys(open).sort(), ["expiresAt", "kind", "kindLabel", "requestId", "requestedAt"]);
+  assert.equal(open.requestId, filed.requestId); assert.equal(open.kind, PERSON_KINDS[0]); assert.ok(open.kindLabel);
+  const wire = JSON.stringify(status);
+  for (const text of [input.reporterName, input.otherPartyName, input.description, input.district, filed.phone, String(input.location.latitude),
+    "Synthetic private reason", "Synthetic: photo blurred", auth.token.email, STAFF.officerName]) assert.equal(wire.includes(text), false);
+  // Unknown references are charged too, so the reference space cannot be walked.
+  await assert.rejects(lookupCaseStatus(db, "A".repeat(20), address, 3), error => error.code === "not-found" && !error.message.includes("A".repeat(20)));
+  await lookupCaseStatus(db, filed.ticketId, address, 3);
+  await assert.rejects(lookupCaseStatus(db, "B".repeat(20), address, 3), { code: "resource-exhausted" });
+  assert.equal((await lookupCaseStatus(db, filed.ticketId, "192.0.2.102", 3)).statusId, "investigating");
+  // The callable applies the 30-per-hour STATUS_LOOKUPS_PER_IP_HOUR default and validates the reference first.
+  const busy = "192.0.2.101", call = reference => handlers.getCaseStatus.run({ data: { reference }, rawRequest: { ip: busy } });
+  await db.collection("statusLookupLimits").doc(hashId(addressBucket(busy))).set({ count: 29, windowStartedAt: Date.now() - 1000 });
+  await assert.rejects(call("not-a-reference"), { code: "invalid-argument" });
+  assert.equal((await call(filed.ticketId)).statusId, "investigating");
+  await assert.rejects(call(filed.ticketId), { code: "resource-exhausted" });
+});
+
+test("cleanup drops expired re-upload requests, lapsed replacements and stale wave-2 counters", async () => {
+  const now = Date.now(), ticket = db.collection("tickets").doc("synthetic-requests");
+  await ticket.set({ status: "open", revision: 0, openDocumentRequests: 2 });
+  const requestDoc = id => db.collection("documentRequests").doc("synthetic-request-" + id);
+  const base = { ticketId: ticket.id, documentId: "synthetic-document", kind: "aadhaar", requestedAt: now - 20 * 86_400_000, fulfilledDocumentId: null };
+  await requestDoc("unanswered").set({ ...base, expiresAt: now - 1000, fulfilledAt: null });
+  await requestDoc("answered").set({ ...base, expiresAt: now - 1000, fulfilledAt: now - 5000, fulfilledDocumentId: "synthetic-copy" });
+  await requestDoc("open").set({ ...base, requestedAt: now, expiresAt: now + 86_400_000, fulfilledAt: null });
+  await purgeDocumentRequests(db, now);
+  assert.equal((await requestDoc("unanswered").get()).exists, false);
+  assert.equal((await requestDoc("answered").get()).exists, false);
+  assert.equal((await requestDoc("open").get()).exists, true);
+  // Only the unanswered request stops counting; an answered one was already decremented.
+  assert.equal((await ticket.get()).data().openDocumentRequests, 1);
+  await purgeDocumentRequests(db, now);
+  assert.equal((await ticket.get()).data().openDocumentRequests, 1);
+  // An abandoned replacement stays pending and lapses like any unsent upload.
+  const store = memoryStore();
+  const [lapsed] = await seedDocuments({ submissionId: randomUUID(), kinds: ["aadhaar"], overrides: { aadhaar: { expiresAt: now - 1000, replacementFor: "synthetic-request-open" } } });
+  await store.save("case-documents/" + lapsed + "/original", Buffer.from("x"));
+  await purgeDocumentBatch(db, store, "expiresAt", now);
+  assert.equal((await db.collection("caseDocuments").doc(lapsed).get()).exists, false);
+  assert.equal(store.objects.size, 0);
+  // purgeExpiredOtps sweeps the per-address lookup windows and per-phone notification ceilings.
+  for (const [name, field, cutoff] of [["statusLookupLimits", "windowStartedAt", now - 86_400_000], ["notificationLimits", "expiresAt", now]]) {
+    const stale = db.collection(name).doc("synthetic-stale"), live = db.collection(name).doc("synthetic-live");
+    await stale.set({ count: 1, [field]: cutoff - 1000 }); await live.set({ count: 1, [field]: cutoff + 60_000 });
+    await purgeExpiredRecords(db, name, field, cutoff);
+    assert.equal((await stale.get()).exists, false); assert.equal((await live.get()).exists, true);
+  }
 });

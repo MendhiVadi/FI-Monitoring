@@ -5,7 +5,7 @@ import contract from "../../shared/contracts/dispute.json";
 export type DocumentRisk = "low" | "medium" | "high" | "altered";
 export type CheckResult = "pass" | "warn" | "fail" | "info" | "unavailable";
 export type ReviewDecision = "accepted" | "rejected" | "reupload_requested";
-export type FileVariant = "original" | "ela" | "faceCard" | "faceQr";
+export type FileVariant = "original" | "ela" | "faceCard" | "faceQr" | "copyMove";
 
 export interface ScreeningCheck { id: string; label: string; result: CheckResult; detail: string }
 export interface QrFields {
@@ -25,7 +25,12 @@ export interface DocumentScreening {
   engineVersion?: string;
   completedAt?: { seconds: number } | null;
 }
-export interface DocumentReview { decision: ReviewDecision; reason: string; by: string; byEmail: string | null; at?: { seconds: number } }
+// Reviews written since wave 2 also carry the reviewer's name and role label;
+// a reupload_requested one also carries the reporter's deadline (ms).
+export interface DocumentReview {
+  decision: ReviewDecision; reason: string; by: string; byEmail: string | null; at?: { seconds: number };
+  officerName?: string | null; officerRole?: string | null; expiresAt?: number | null;
+}
 export interface CaseDocument {
   id: string;
   ticketId: string | null;
@@ -39,9 +44,13 @@ export interface CaseDocument {
   idNumberFull?: string | null;
   idNumberMasked?: string | null;
   uploadedAt?: { seconds: number };
-  storage?: { original: string; ela?: string; faceCard?: string; faceQr?: string };
+  storage?: { original: string; ela?: string; faceCard?: string; faceQr?: string; copyMove?: string };
   screening?: DocumentScreening;
   review?: DocumentReview | null;
+  // A re-upload (uploadReplacementDocument) names the document it replaces;
+  // the old one then names its replacement.
+  replaces?: string | null;
+  supersededBy?: string | null;
 }
 
 const { kinds, caseTypes, caseTypeByPartyType } = contract.documents;
@@ -51,6 +60,8 @@ const CASE_TYPES: Record<string, { label: string; required: string[] }> = caseTy
 const PARTY_CASE_TYPES: Record<string, string> = caseTypeByPartyType;
 
 export const REVIEW_LIMITS = { min: 3, max: 500 } as const; // mirrors reviewCaseDocument
+/** Days a reporter has to answer a re-upload request (contract documents.replacementTtlDays). */
+export const REPLACEMENT_TTL_DAYS: number = contract.documents.replacementTtlDays;
 export const REVIEW_LABELS: Record<ReviewDecision, string> = {
   accepted: "Accepted",
   rejected: "Rejected",
@@ -62,11 +73,39 @@ export const REVIEW_LABELS: Record<ReviewDecision, string> = {
 const caseTypeOf = (caseType: string | undefined) => caseType && Object.hasOwn(CASE_TYPES, caseType) ? CASE_TYPES[caseType] : undefined;
 
 export const kindLabel = (kind: string) => KIND_LABELS.get(kind) ?? kind;
+
+// Plain names for the screening checks added in wave 2, used when a stored
+// check carries no label of its own (vault/Wave-2-Spec.md §6).
+const CHECK_LABELS: Record<string, string> = {
+  pdf_signature: "PDF digital signature",
+  copy_move: "Copied regions (copy-move)",
+  hologram: "Hologram (tilted photo)",
+  liveness: "Selfie liveness",
+  selfie_match: "Selfie matches the Aadhaar photo",
+  kyc: "Identity (KYC) check",
+};
+export const checkLabel = (check: { id: string; label?: string }) =>
+  check.label?.trim() || (Object.hasOwn(CHECK_LABELS, check.id) ? CHECK_LABELS[check.id] : check.id);
 export const caseTypeLabel = (caseType: string | undefined) => caseTypeOf(caseType)?.label || "Unknown case type";
 // Legacy tickets carry no case type; derive the one a new report would get.
 export const caseTypeForParty = (partyType: string | undefined) =>
   partyType && Object.hasOwn(PARTY_CASE_TYPES, partyType) ? PARTY_CASE_TYPES[partyType] : undefined;
 export const isFlagged = (document: CaseDocument) => document.screening?.risk === "high" || document.screening?.risk === "altered";
+
+export type ReuploadState = "open" | "fulfilled" | "expired";
+// Where a reupload_requested review stands. documentRequests are server-only;
+// the review carries the server's expiry (ms) since wave 2, and older reviews
+// and masked (viewer) copies fall back to review time plus REPLACEMENT_TTL_DAYS.
+// A masked review time arrives as ms, and viewers get current copies only, so
+// a viewer sees open or expired.
+export function reuploadRequest(review: { decision: string; at?: { seconds: number } | number | null; expiresAt?: number | null } | null | undefined,
+  supersededBy?: string | null, now = Date.now()): { state: ReuploadState; expiresAt: number | null } | null {
+  if (review?.decision !== "reupload_requested") return null;
+  const at = typeof review.at === "number" ? review.at : typeof review.at?.seconds === "number" ? review.at.seconds * 1000 : NaN;
+  const stored = typeof review.expiresAt === "number" && Number.isFinite(review.expiresAt) ? review.expiresAt : null;
+  const expiresAt = stored ?? (Number.isFinite(at) ? at + REPLACEMENT_TTL_DAYS * 86_400_000 : null);
+  return { state: supersededBy ? "fulfilled" : expiresAt !== null && now > expiresAt ? "expired" : "open", expiresAt };
+}
 
 export function missingRequiredKinds(caseType: string | undefined, present: Iterable<string>): string[] {
   const have = new Set(present);

@@ -10,11 +10,16 @@ import { dHash, dHashBands, errorLevelAnalysis, estimateJpegQuality, openImage, 
 import { decodeJpeg2000 } from "./jpeg2000";
 import { IMAGE_EDITORS, PDF_EDITORS, pdfDate, readImageMetadata } from "./metadata";
 import { recognise, tessdataDir } from "./ocr";
+import { detectCopyMove } from "./copyMove";
+import { checkHologram } from "./hologram";
+import { kycProvider, type KycRequest } from "./kyc/index";
+import { checkSelfie } from "./selfie";
 import { analysePdf, type PdfAnalysis, type PdfImage } from "./pdf";
+import { verifyPdfSignatures, type PdfSignatureVerdict } from "./pdfSignature";
 import { readQrCode } from "./qrReader";
 import { assetPath, errorName, StepTimeout, withTimeout } from "./runtime";
 
-export const ENGINE_VERSION = "screening-2026-10-23.1";
+export const ENGINE_VERSION = "screening-2026-10-29.1";
 
 export type CheckResult = "pass" | "warn" | "fail" | "info" | "unavailable";
 export interface ScreeningCheck { id: string; label: string; result: CheckResult; detail: string }
@@ -24,8 +29,12 @@ export interface ScreeningDeps {
   // Implemented by documents-backend with Firestore; must exclude documents of the same submission.
   findDuplicates(q: { sha256: string; dhash: string | null; dhashBands: string[]; idNumberHash: string | null; reporterNameNorm: string | null }): Promise<DuplicateReport>;
   uidaiCertPem: string | null;
+  // The latest non-superseded document of `kind` in the same submission (or,
+  // for a replacement, the same case); null when there is none.
+  companion(kind: string): Promise<CompanionFile | null>;
 }
-export interface DerivedFile { key: "ela" | "faceCard" | "faceQr"; contentType: string; bytes: Buffer }
+export interface CompanionFile { bytes: Buffer; contentType: string }
+export interface DerivedFile { key: "ela" | "faceCard" | "faceQr" | "copyMove"; contentType: string; bytes: Buffer }
 export interface ScreeningOutput {
   risk: "low" | "medium" | "high" | "altered"; score: number; summary: string; userMessages: string[];
   checks: ScreeningCheck[];
@@ -44,13 +53,17 @@ const OCR_TEXT_LIMIT = 4000;
 const LABELS: Record<string, string> = {
   integrity: "File integrity", metadata: "Metadata", jpeg: "JPEG compression", ela: "Error level analysis",
   duplicates: "Duplicates", aadhaar_qr: "Aadhaar Secure QR", print_vs_qr: "Printed text vs QR",
-  id_numbers: "ID numbers", name_match: "Name match", faces: "Faces",
+  id_numbers: "ID numbers", name_match: "Name match", faces: "Faces", pdf_signature: "PDF signature", copy_move: "Copied regions",
+  hologram: "Hologram", liveness: "Liveness", selfie_match: "Selfie match", kyc: "KYC verification",
 };
 // Points added per check; risk bands are low < 25 <= medium < 55 <= high.
 const WEIGHTS: Record<string, { warn: number; fail: number }> = {
   integrity: { warn: 10, fail: 40 }, metadata: { warn: 15, fail: 15 }, jpeg: { warn: 10, fail: 10 }, ela: { warn: 15, fail: 15 },
   duplicates: { warn: 25, fail: 60 }, aadhaar_qr: { warn: 15, fail: 45 }, print_vs_qr: { warn: 10, fail: 40 },
   id_numbers: { warn: 10, fail: 35 }, name_match: { warn: 10, fail: 30 }, faces: { warn: 10, fail: 30 },
+  // A broken PDF signature also sets the risk to "altered"; copy_move and hologram never fail.
+  pdf_signature: { warn: 10, fail: 60 }, copy_move: { warn: 15, fail: 15 }, hologram: { warn: 10, fail: 10 },
+  liveness: { warn: 15, fail: 35 }, selfie_match: { warn: 15, fail: 40 }, kyc: { warn: 15, fail: 40 },
 };
 const SEVERITY: Record<CheckResult, number> = { fail: 4, warn: 3, pass: 2, info: 1, unavailable: 0 };
 
@@ -67,7 +80,9 @@ const ID_NUMBER_KIND = new Map<string, string>(
   (contract.documents.kinds as Array<{ id: string; idNumber?: string }>).filter(kind => kind.idNumber).map(kind => [kind.id, kind.idNumber as string]),
 );
 // Kinds where text is not expected, so OCR and name checks are skipped.
-const PICTURE_KINDS = new Set(["site_photo"]);
+const PICTURE_KINDS = new Set(["site_photo", "aadhaar_angle", "selfie"]);
+// Three frames of one face side by side repeat the background by design.
+const NO_COPY_MOVE_KINDS = new Set(["selfie"]);
 
 export function sniffContentType(bytes: Buffer): string | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
@@ -111,11 +126,87 @@ function logStep(step: string, err: unknown) {
   console.warn("Document screening step failed", { step, error: errorName(err) });
 }
 
+// For the companion checks (hologram, selfie): a failed or slow lookup means
+// "no companion", so the check reports itself unavailable instead of failing.
+export async function loadCompanion(deps: ScreeningDeps, kind: string, ms: number): Promise<CompanionFile | null> {
+  if (typeof deps.companion !== "function") return null;
+  try {
+    return await withTimeout("companion", ms, () => deps.companion(kind));
+  } catch (err) {
+    logStep("companion", err);
+    return null;
+  }
+}
+
+const byArea = (a: PdfImage, b: PdfImage) => b.width * b.height - a.width * a.height;
+
+async function findQr(image: Buffer | null, pdfImages: PdfImage[]): Promise<{ content: string; image: PdfImage | null } | null> {
+  if (image) {
+    const content = await readQrCode(image);
+    if (content) return { content, image: null };
+  }
+  // QR images are square; try those first, then the rest.
+  const squareFirst = [...pdfImages].sort((a, b) => Number(Math.abs(a.width / a.height - 1) > 0.2) - Number(Math.abs(b.width / b.height - 1) > 0.2));
+  for (const candidate of squareFirst.slice(0, 5)) {
+    const content = await readQrCode(candidate);
+    if (content) return { content, image: candidate };
+  }
+  return null;
+}
+
+async function scanQrPhoto(photo: Buffer): Promise<FaceScan | null> {
+  const decoded = await decodeJpeg2000(photo).catch(err => { logStep("jpeg2000", err); return null; });
+  return decoded ? scanFaces(decoded, { wholeIfNone: true }) : null;
+}
+
+type FaceRefs = { cardFace: Float32Array | null; qrFace: Float32Array | null };
+// A selfie's reference faces: the companion Aadhaar's card photo and its QR
+// photo, found the way the Aadhaar's own screening finds them. On a timeout
+// the faces found so far are kept.
+async function aadhaarFaces(card: CompanionFile, certPem: string | null, reporterName: string | null, ms: number): Promise<FaceRefs> {
+  const found: FaceRefs = { cardFace: null, qrFace: null };
+  try {
+    await withTimeout("selfie_refs", ms, async () => {
+      const type = sniffContentType(card.bytes);
+      const image = type?.startsWith("image/") ? card.bytes : null;
+      if (!image && type !== "application/pdf") return;
+      const pdfImages = image ? [] : (await analysePdf(card.bytes, { reporterName, timeoutMs: ms })).images.sort(byArea);
+      const qrAt = await findQr(image, pdfImages);
+      for (const source of image ? [image] : pdfImages.filter(pdfImage => pdfImage !== qrAt?.image).slice(0, 4)) {
+        found.cardFace = (await scanFaces(source)).descriptor;
+        if (found.cardFace) break;
+      }
+      const qr = qrAt ? decodeAadhaarQr(qrAt.content, certPem) : null;
+      // A QR that fails its own signature check cannot vouch for anyone.
+      if (qr?.fields.photo && qr.signatureValid !== false) found.qrFace = (await scanQrPhoto(qr.fields.photo))?.descriptor ?? null;
+    });
+  } catch (err) {
+    logStep("selfie_refs", err);
+  }
+  return { ...found };
+}
+
+function pdfSignatureFinding(verdicts: PdfSignatureVerdict[]): Finding & { broken: boolean } {
+  const who = (verdict: PdfSignatureVerdict) => verdict.signer ? `"${verdict.signer}"` : "an unnamed signer";
+  const broken = verdicts.find(verdict => verdict.valid === false);
+  if (broken) return { broken: true, result: "fail", text: `The signature by ${who(broken)} does not verify: ${broken.reason} The file was altered after signing.` };
+  const valid = verdicts.filter(verdict => verdict.valid === true);
+  if (!valid.length) return { broken: false, result: "unavailable", text: `Digitally signed, but the signature could not be checked: ${verdicts[0].reason}` };
+  const unchecked = verdicts.length - valid.length;
+  return { broken: false, result: "pass", text: `Signed by ${who(valid[0])}${valid[0].timestamp ? " (time-stamp)" : ""}; the signature verifies over the signed bytes.`
+    + (valid.some(verdict => !verdict.coversFile) ? " Content was added after signing (see Metadata)." : "")
+    + (unchecked ? ` ${unchecked} other signature${unchecked === 1 ? "" : "s"} could not be checked.` : "")
+    // Without a trusted root the name is the certificate's claim, not a proven identity.
+    + " The certificate is not checked against a trusted authority." };
+}
+
 export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps): Promise<ScreeningOutput> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   const budget = (ms: number) => Math.max(500, Math.min(ms, deadline - Date.now()));
   const { bytes, kind } = input;
   const checks: ScreeningCheck[] = [];
+  // Checks shown to staff that must not move the score (a mock KYC provider).
+  const unscored = new Set<string>();
   const userMessages = new Set<string>();
   const derived: DerivedFile[] = [];
   const add = (id: string, part: Finding) => checks.push({ id, label: LABELS[id], result: part.result, detail: part.text });
@@ -218,7 +309,7 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
     const tool = [pdf.producer, pdf.creator].find(value => value && PDF_EDITORS.test(value));
     if (tool) parts.push({ result: "warn", text: `Produced with editing software (${tool.slice(0, 80)}).` });
     if (pdf.signatureCount) {
-      parts.push({ result: "info", text: `Digitally signed (${pdf.signatureCount} signature${pdf.signatureCount === 1 ? "" : "s"}; not cryptographically verified in this version).` });
+      parts.push({ result: "info", text: `Digitally signed (${pdf.signatureCount} signature${pdf.signatureCount === 1 ? "" : "s"}; see PDF signature).` });
       if (pdf.bytesAfterSignature > 0) parts.push({ result: "warn", text: "Content was added after the last signature." });
     }
     const expectedSaves = (pdf.signatureCount ? pdf.signatureCount + 1 : 1) + (pdf.linearized ? 1 : 0);
@@ -232,6 +323,22 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
     add("metadata", combine(parts, { result: "pass", text: origin ? `Producer: ${origin.slice(0, 120)}; saved once.` : "No editing traces; saved once." }));
   } else {
     add("metadata", { result: "unavailable", text: "Unsupported file; metadata not checked." });
+  }
+
+  // PDF signature (CMS / PKCS#7 over the ByteRange); omitted for unsigned files.
+  let signatureBroken = false;
+  if (isPdf) {
+    try {
+      const verdicts = await withTimeout("pdf_signature", budget(8_000), () => verifyPdfSignatures(bytes));
+      if (verdicts.length) {
+        const finding = pdfSignatureFinding(verdicts);
+        signatureBroken = finding.broken;
+        add("pdf_signature", finding);
+      }
+    } catch (err) {
+      logStep("pdf_signature", err);
+      add("pdf_signature", { result: "unavailable", text: "The digital signature check could not run." });
+    }
   }
 
   // 3. JPEG compression
@@ -278,23 +385,34 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
     add("ela", { result: "unavailable", text: isPdf ? "No page image to analyse (text-only or locked PDF)." : "No decodable image." });
   }
 
+  // Copied regions. Warn only: a stamp or pattern printed twice can match too.
+  // The heatmap is stored only when something was found.
+  if (primary && !NO_COPY_MOVE_KINDS.has(kind)) {
+    const source: Buffer | RawImage = primary, ms = budget(8_000);
+    try {
+      const found = await withTimeout("copy_move", ms, () => detectCopyMove(source, Date.now() + ms - 250));
+      if (!found) add("copy_move", { result: "unavailable", text: "The image is too small to look for copied regions." });
+      else if (!found.suspicious) add("copy_move", { result: "pass", text: "No region of the image was found copied elsewhere in it." });
+      else {
+        derived.push({ key: "copyMove", contentType: "image/png", bytes: found.heatmap });
+        const offset = found.shift ? ` (offset ${found.shift.dx}, ${found.shift.dy} px)` : "";
+        add("copy_move", { result: "warn", text: `A region appears to be copied to another place in the image${offset}, about ${Math.max(1, Math.round(found.share * 100))}% of its area; compare the heatmap (red: source, amber: copy) with the original.` });
+      }
+    } catch (err) {
+      logStep("copy_move", err);
+      add("copy_move", { result: "unavailable", text: "The copied-region check could not run in time." });
+    }
+  }
+
   // 6. Aadhaar Secure QR
   let qr: SecureQrResult | null = null;
   let qrImage: PdfImage | null = null;
-  const pdfImages = pdf ? [...pdf.images].sort((a, b) => b.width * b.height - a.width * a.height) : [];
+  const pdfImages = pdf ? [...pdf.images].sort(byArea) : [];
   if (kind === "aadhaar") {
     let content: string | null = null;
     try {
-      await withTimeout("qr", budget(12_000), async () => {
-        if (isImage) content = await readQrCode(bytes);
-        // QR images are square; try those first, then the rest.
-        const squareFirst = [...pdfImages].sort((a, b) => Number(Math.abs(a.width / a.height - 1) > 0.2) - Number(Math.abs(b.width / b.height - 1) > 0.2));
-        for (const image of squareFirst.slice(0, 5)) {
-          if (content) break;
-          content = await readQrCode(image);
-          if (content) qrImage = image;
-        }
-      });
+      const found = await withTimeout("qr", budget(12_000), () => findQr(isImage ? bytes : null, pdfImages));
+      if (found) { content = found.content; qrImage = found.image; }
     } catch (err) {
       logStep("qr", err);
     }
@@ -335,11 +453,7 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
         const sources: Array<Buffer | RawImage> = isImage ? [bytes] : pdfImages.filter(image => image !== qrImage).slice(0, 4);
         const card: FaceScan[] = [];
         for (const source of sources) card.push(await scanFaces(source));
-        let photo: FaceScan | null = null;
-        if (qrFields?.photo) {
-          const decoded = await decodeJpeg2000(qrFields.photo).catch(err => { logStep("jpeg2000", err); return null; });
-          if (decoded) photo = await scanFaces(decoded, { wholeIfNone: true });
-        }
+        const photo = qrFields?.photo ? await scanQrPhoto(qrFields.photo) : null;
         return { card, photo };
       }).catch(err => { logStep("faces", err); return "unavailable" as const; });
   const [ocr, faces] = await Promise.all([ocrWork, faceWork]);
@@ -419,6 +533,23 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
       try { idNumberHash = hashId(`${kind}:${hashable}`); } catch (err) { logStep("id-hash", err); }
     }
     add("id_numbers", combine(parts, { result: "unavailable", text: "No ID number to check." }));
+
+    // KYC (KYC_PROVIDER; omitted when "none"). Only a typed number that passed
+    // the format checks above is sent.
+    const provider = kycProvider();
+    if (provider && (idType === "aadhaar" || idType === "pan")) {
+      const wellFormed = typed && (idType === "aadhaar" ? isValidAadhaar(typed) : isValidPan(typed)) ? typed : null;
+      const request: KycRequest = { kind, idType, idNumber: wellFormed, name: reporterName };
+      const ms = budget(10_000);
+      try {
+        const verdict = await withTimeout("kyc", ms, () => provider.verify(request, Date.now() + ms));
+        checks.push({ id: "kyc", label: provider.label, result: verdict.result, detail: String(verdict.detail) });
+      } catch (err) {
+        logStep("kyc", err);
+        checks.push({ id: "kyc", label: provider.label, result: "unavailable", detail: "The KYC provider did not answer in time." });
+      }
+      if (!provider.scored) unscored.add("kyc");
+    }
   }
 
   // 9. Name match
@@ -467,27 +598,54 @@ export async function screenDocument(input: ScreeningInput, deps: ScreeningDeps)
     }
   }
 
+  // 11. Companion checks against the same submission's Aadhaar. They warn at
+  // most and never set "altered": a poor tilt or a bad frame is as likely as a fake.
+  const soft = (verdict: { result: CheckResult; detail: string }): Finding => ({ result: verdict.result === "fail" ? "warn" : verdict.result, text: verdict.detail });
+  if (kind === "aadhaar_angle") {
+    const card = await loadCompanion(deps, "aadhaar", budget(5_000));
+    add("hologram", card ? soft(await checkHologram(bytes, card.bytes, Date.now() + budget(10_000)))
+      : { result: "unavailable", text: "No Aadhaar upload in this report to compare the tilted photo with." });
+  } else if (kind === "selfie") {
+    const card = await loadCompanion(deps, "aadhaar", budget(5_000));
+    const refs = card && faceModelDir() ? await aadhaarFaces(card, deps.uidaiCertPem, reporterName, budget(15_000)) : { cardFace: null, qrFace: null };
+    const verdicts = await checkSelfie(bytes, refs, Date.now() + budget(20_000));
+    add("liveness", soft(verdicts.liveness));
+    add("selfie_match", verdicts.match ? soft(verdicts.match) : {
+      result: "unavailable",
+      text: !card ? "No Aadhaar upload in this report to compare the selfie with."
+        : !faceModelDir() ? "Face models are missing, so the selfie could not be compared."
+          : "No face could be read from the Aadhaar upload to compare the selfie with.",
+    });
+  }
+
   // 5. Duplicates (after OCR, which may supply the ID number)
+  // Listed after the image checks, as before.
+  const duplicatesAt = Math.max(...["integrity", "metadata", "pdf_signature", "jpeg", "ela", "copy_move"].map(id => checks.findIndex(check => check.id === id))) + 1;
   try {
     const report = await withTimeout("duplicates", budget(8_000), () => deps.findDuplicates({ sha256, dhash, dhashBands: dhash ? dHashBands(dhash) : [], idNumberHash, reporterNameNorm }));
     const parts: Finding[] = [];
     if (report.exactMatches) parts.push({ result: "fail", text: `The same file was uploaded with ${report.exactMatches} other report${report.exactMatches === 1 ? "" : "s"}.` });
     if (report.sameIdDifferentName) parts.push({ result: "fail", text: "The same ID number was used by a reporter with a different name." });
     if (report.nearMatches) parts.push({ result: "warn", text: `Looks nearly identical to ${report.nearMatches} file${report.nearMatches === 1 ? "" : "s"} in other reports.` });
-    checks.splice(4, 0, { id: "duplicates", label: LABELS.duplicates, ...toCheck(combine(parts, { result: "pass", text: "Not seen in other reports." })) });
+    checks.splice(duplicatesAt, 0, { id: "duplicates", label: LABELS.duplicates, ...toCheck(combine(parts, { result: "pass", text: "Not seen in other reports." })) });
   } catch (err) {
     logStep("duplicates", err);
-    checks.splice(4, 0, { id: "duplicates", label: LABELS.duplicates, result: "unavailable", detail: "The duplicate lookup could not run." });
+    checks.splice(duplicatesAt, 0, { id: "duplicates", label: LABELS.duplicates, result: "unavailable", detail: "The duplicate lookup could not run." });
   }
 
-  const score = Math.min(100, checks.reduce((sum, check) => {
+  const scored = checks.filter(check => !unscored.has(check.id) && WEIGHTS[check.id]);
+  const score = Math.min(100, scored.reduce((sum, check) => {
     const weight = WEIGHTS[check.id];
     return sum + (check.result === "fail" ? weight.fail : check.result === "warn" ? weight.warn : 0);
   }, 0));
-  const altered = qr?.signatureValid === false;
+  // Only a broken signature (Aadhaar QR or PDF) proves an alteration.
+  const qrBroken = qr?.signatureValid === false, altered = qrBroken || signatureBroken;
   const risk: ScreeningOutput["risk"] = altered ? "altered" : score >= 55 ? "high" : score >= 25 ? "medium" : "low";
+  const summary = !altered ? summarise(risk, score, scored)
+    : qrBroken ? "Altered: the Aadhaar QR signature does not verify against UIDAI's certificate."
+      : "Altered: the PDF's digital signature no longer matches its contents.";
   return {
-    risk, score: altered ? 100 : score, summary: summarise(risk, altered ? 100 : score, checks), userMessages: [...userMessages], checks, extracted,
+    risk, score: altered ? 100 : score, summary, userMessages: [...userMessages], checks, extracted,
     sha256, dhash, dhashBands: dhash ? dHashBands(dhash) : [], idNumberHash, reporterNameNorm,
     width, height, pageCount, derived,
   };
@@ -498,7 +656,6 @@ function toCheck(part: Finding): { result: CheckResult; detail: string } {
 }
 
 function summarise(risk: ScreeningOutput["risk"], score: number, checks: ScreeningCheck[]): string {
-  if (risk === "altered") return "Altered: the Aadhaar QR signature does not verify against UIDAI's certificate.";
   const issues = checks.filter(check => check.result === "fail" || check.result === "warn")
     .sort((a, b) => SEVERITY[b.result] - SEVERITY[a.result] || WEIGHTS[b.id].fail - WEIGHTS[a.id].fail)
     .slice(0, 3)

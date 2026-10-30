@@ -1,19 +1,28 @@
 import { memo } from "react";
 import type { Ticket } from "../tickets/types";
 import { StatusBadge } from "../tickets/StatusBadge";
-import { formatTimestamp } from "./presentation";
+import { assigneeText, formatTimestamp, overdueText } from "./presentation";
 import { NotProvided } from "./CaseText";
 import { styles } from "./portal.styles";
 
 // Memoised so typing in the search, reason or note fields re-renders only the
 // inputs, not every loaded registry card (the list grows with "load older").
-export const TicketCard = memo(function TicketCard({ ticket, selected, onSelect }: {
+export const TicketCard = memo(function TicketCard({ ticket, selected, onSelect, currentUid }: {
   ticket: Ticket;
   selected: boolean;
   onSelect: (ticket: Ticket) => void;
+  currentUid?: string;
 }) {
   const { reporterName, reporterType, district, state } = ticket.dispute ?? {};
   const place = [district, state].filter(Boolean).join(", ");
+  const overdue = overdueText(ticket.overdue);
+  // Older projections carry no assignment fields at all; say nothing then.
+  const tracksAssignment = ticket.assignedTo !== undefined || ticket.assignedName !== undefined;
+  // A viewer's masked copy drops the assignee's uid and email, so a case given to
+  // an officer without a display name still shows as assigned (`assigned` and assignedAt are kept).
+  const assignee = assigneeText(ticket, currentUid), assigned = Boolean(assignee || ticket.assignedTo || ticket.assignedAt || ticket.assigned);
+  const mine = Boolean(currentUid) && ticket.assignedTo === currentUid;
+  const requests = ticket.openDocumentRequests ?? 0;
   return (
     <div
       className="ticket-card"
@@ -35,6 +44,21 @@ export const TicketCard = memo(function TicketCard({ ticket, selected, onSelect 
             )}
             {ticket.priority === "critical" && (
               <span style={styles.criticalPill}>High Urgency</span>
+            )}
+            {overdue && (
+              <span className="portal-overdue-pill" title={overdue.long}>
+                <span aria-hidden="true">⏱ </span>{overdue.short}
+              </span>
+            )}
+            {mine && (
+              <span className="portal-assignee-pill">
+                <span aria-hidden="true">● </span>Assigned to you
+              </span>
+            )}
+            {requests > 0 && (
+              <span className="portal-request-pill" title="Waiting for the reporter to upload a new copy">
+                <span aria-hidden="true">↻ </span>{requests} re-upload{requests === 1 ? "" : "s"} requested
+              </span>
             )}
             {(ticket.documents?.flagged ?? 0) > 0 && (
               <span style={styles.flaggedPill}>
@@ -69,6 +93,16 @@ export const TicketCard = memo(function TicketCard({ ticket, selected, onSelect 
           </svg>
           <span><span className="sr-only">Location: </span>{place || <NotProvided label="Location not provided" />}</span>
         </div>
+
+        {tracksAssignment && (
+          <div style={styles.metaItem}>
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M8 2v4M16 2v4M7 13l3 3 7-7" />
+            </svg>
+            <span>{assignee ? <><span className="sr-only">Assigned to </span>{assignee}</> : assigned ? "Assigned" : <NotProvided label="Unassigned" />}</span>
+          </div>
+        )}
 
         {ticket.waFrom && (
           <div style={styles.metaItem}>

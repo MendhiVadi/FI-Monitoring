@@ -8,6 +8,7 @@ Compact map of the project. Read only the notes linked below that your task need
 - [[Efficiency-and-Barriers]] — 2026-10-22 sweep: what was scanned, fixed, deferred
 - [[UI-UX]] — admin/login and public UI audit findings and fixes
 - [[Documents-and-Screening]] — case-type document uploads, forgery screening checks, admin review (v1 spec)
+- [[Wave-2-Spec]] — roles, assignment, service targets, insights, status lookup + re-upload, screening v2, limits, problem pack
 - [[Ideas]] — candidate features ranked by value/effort, reusable "problem pack" changes
 - [[Decisions]] — decisions + why (append-only)
 - [[Conventions]] — commands, checks, gotchas

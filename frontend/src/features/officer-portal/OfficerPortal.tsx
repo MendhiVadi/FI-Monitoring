@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import contract from "../../shared/contracts/dispute.json";
 import { Spinner } from "../auth/Spinner";
 import { STATUS_ORDER, statusLabel } from "../tickets/ticketStatus";
+import { REGISTRY_CAP } from "../tickets/useLiveTickets";
 import { useOfficerPortal } from "./useOfficerPortal";
 import { formatShortDate, relativeTime } from "./presentation";
 import { styles } from "./portal.styles";
@@ -11,6 +12,8 @@ import { PortalHeader } from "./PortalHeader";
 import { Dossier } from "./Dossier";
 import { NoticeRegion } from "./NoticeRegion";
 import "./portal.css";
+
+const { acknowledgeDays, resolveDays } = contract.serviceTargets;
 
 // Re-renders itself every 30 s so the rest of the registry does not.
 function UpdatedAgo({ at }: { at: number | null }) {
@@ -30,11 +33,13 @@ export function OfficerPortal() {
   const portal = useOfficerPortal();
   const { officerEmail, selectedId, setSelectedTicket, statusFilter, setStatusFilter, disputeFilter, setDisputeFilter, searchQuery, setSearchQuery,
     filtersActive, clearFilters, handleLogout, confirmLeave, ticketsLoading, ticketsError, ticketsErrorCode, isStale, lastLoadedAt, searchedBack,
-    filteredTickets, stats, hasMore, loadMore, refresh, notice, showNotice, dismissNotice } = portal;
+    filteredTickets, stats, hasMore, capped, loadMore, refresh, notice, showNotice, dismissNotice, currentUid, readOnly,
+    assigneeFilter, setAssigneeFilter, overdueOnly, setOverdueOnly, staff } = portal;
   const searchRef = useRef<HTMLInputElement>(null);
   const [refreshing, setRefreshing] = useState(false);
   const runRefresh = async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } };
-  const activeFilterCount = [statusFilter !== "all", disputeFilter !== "all", searchQuery.trim() !== ""].filter(Boolean).length;
+  const activeFilterCount = [statusFilter !== "all", disputeFilter !== "all", searchQuery.trim() !== "", assigneeFilter !== "all", overdueOnly]
+    .filter(Boolean).length;
   const sessionError = ticketsErrorCode === "functions/unauthenticated" || ticketsErrorCode === "functions/permission-denied";
   const firstLoad = ticketsLoading && filteredTickets.length === 0 && !ticketsError;
 
@@ -48,6 +53,17 @@ export function OfficerPortal() {
   ];
   const isPressed = (key: string) => key === "investigating"
     ? statusFilter === "investigating" || statusFilter === "inspection_scheduled" : statusFilter === key;
+  // Overdue doubles as the Overdue-only toggle; the waiting counts have no server filter, so they are not buttons.
+  const waitingMetrics = [
+    { key: "waiting7", label: "Waiting over 7 days", value: stats?.waiting7, sub: "Not closed, filed more than 7 days ago", accent: "#64748b" },
+    { key: "waiting30", label: "Waiting over 30 days", value: stats?.waiting30, sub: "Not closed, filed more than 30 days ago", accent: "#94a3b8" },
+  ];
+
+  // "Me" means nothing to a viewer (never assigned), and listOfficers is officer+,
+  // so a viewer filters by Anyone / Unassigned only.
+  const staffName = (uid: string, name: string | null, email: string | null) => name || email || `Staff ·${uid.slice(-4)}`;
+  const otherStaff = staff.officers.filter(officer => officer.access !== "viewer" && officer.uid !== currentUid);
+  const knownAssignee = ["all", "me", "unassigned"].includes(assigneeFilter) || otherStaff.some(officer => officer.uid === assigneeFilter);
 
   async function copyReportLink() {
     try {
@@ -79,6 +95,26 @@ export function OfficerPortal() {
             </button>
           ))}
         </div>
+        <div className="portal-metrics portal-metrics--targets" role="group" aria-label="Service targets">
+          <button
+            type="button"
+            className="portal-metric"
+            aria-pressed={overdueOnly}
+            style={{ borderLeftColor: "#f97316" }}
+            onClick={() => setOverdueOnly(on => !on)}
+          >
+            <span className="portal-metric-label"><span aria-hidden="true">⏱ </span>Overdue</span>
+            <span className="portal-metric-value" style={{ color: "#fdba74" }}>{stats?.overdue ?? "—"}</span>
+            <span className="portal-metric-sub">Past the {acknowledgeDays}-day acknowledge or {resolveDays}-day resolve target; selects Overdue only</span>
+          </button>
+          {waitingMetrics.map(metric => (
+            <div key={metric.key} className="portal-metric portal-metric--static" style={{ borderLeftColor: metric.accent }}>
+              <span className="portal-metric-label">{metric.label}</span>
+              <span className="portal-metric-value" style={{ color: "#e5e7eb" }}>{metric.value ?? "—"}</span>
+              <span className="portal-metric-sub">{metric.sub}</span>
+            </div>
+          ))}
+        </div>
 
         {/* Filter & Search Toolbar */}
         <div style={styles.toolbarCard}>
@@ -88,13 +124,16 @@ export function OfficerPortal() {
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <label htmlFor="registry-search" className="sr-only">Search cases by ID, name, phone, state or district</label>
+              {/* A viewer's search runs over the masked copy: initials, no phone numbers. */}
+              <label htmlFor="registry-search" className="sr-only">
+                {readOnly ? "Search cases by ID, initials, state or district" : "Search cases by ID, name, phone, state or district"}
+              </label>
               <input
                 ref={searchRef}
                 id="registry-search"
                 type="search"
                 enterKeyHint="search"
-                placeholder="Search ID, name, phone, district"
+                placeholder={readOnly ? "Search ID, initials, district" : "Search ID, name, phone, district"}
                 maxLength={120}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -127,6 +166,28 @@ export function OfficerPortal() {
                 {contract.disputeTypes.map(type => <option key={type} value={type}>{type}</option>)}
               </select>
             </div>
+
+            <div className="portal-filter">
+              <label htmlFor="filter-assignee" style={styles.filterLabel}>Assignee</label>
+              <select id="filter-assignee" value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} style={styles.filterSelect}>
+                <option value="all">Anyone</option>
+                {!readOnly && <option value="me">Assigned to me</option>}
+                <option value="unassigned">Unassigned</option>
+                {/* A uid from the URL that the directory does not (yet) list. */}
+                {!knownAssignee && (
+                  <option value={assigneeFilter}>{assigneeFilter === currentUid ? "You" : staff.loading ? "Loading staff…" : "Selected staff member"}</option>
+                )}
+                {otherStaff.length > 0 && (
+                  <optgroup label="Staff">
+                    {otherStaff.map(officer => <option key={officer.uid} value={officer.uid}>{staffName(officer.uid, officer.displayName, officer.email)}</option>)}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
+            <button type="button" className="portal-btn portal-toggle" aria-pressed={overdueOnly} onClick={() => setOverdueOnly(on => !on)}>
+              <span aria-hidden="true">⏱</span> Overdue only
+            </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginLeft: "auto", flexWrap: "wrap" }}>
               <UpdatedAgo at={lastLoadedAt} />
@@ -230,7 +291,7 @@ export function OfficerPortal() {
           ) : (
             <div className={isStale ? "portal-grid-stale" : undefined} aria-busy={isStale || undefined} style={styles.ticketGrid}>
               {filteredTickets.map((ticket) => (
-                <TicketCard key={ticket.id} ticket={ticket} selected={selectedId === ticket.id} onSelect={setSelectedTicket} />
+                <TicketCard key={ticket.id} ticket={ticket} selected={selectedId === ticket.id} onSelect={setSelectedTicket} currentUid={currentUid} />
               ))}
             </div>
           )}
@@ -241,6 +302,8 @@ export function OfficerPortal() {
               <button type="button" className="portal-btn" style={styles.modalSecondaryBtn} disabled={ticketsLoading || isStale} onClick={() => void loadMore()}>
                 {ticketsLoading && !isStale && !refreshing ? <><Spinner /> Loading…</> : filtersActive ? "Search older cases" : "Load older cases"}
               </button>
+            ) : capped ? (
+              <p role="status" className="portal-cap-note">Showing the {REGISTRY_CAP} most recent matches — refine your search</p>
             ) : (
               <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>End of results</span>
             )}

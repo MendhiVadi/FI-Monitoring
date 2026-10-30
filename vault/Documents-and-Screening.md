@@ -44,7 +44,9 @@ screening: {
   engineVersion: string
   completedAt: Timestamp | null
 }
-review: { decision: "accepted"|"rejected"|"reupload_requested", reason: string, by: uid, byEmail: string|null, at: Timestamp } | null
+review: { decision: "accepted"|"rejected"|"reupload_requested", reason: string, by: uid, byEmail: string|null, at: Timestamp,
+          officerUid, officerEmail, officerName, officerRole,   // wave 2 staff identity
+          expiresAt?: number } | null                      // ms; reupload_requested only: the open request's deadline
 ```
 Ticket gains `documents: { caseType, count, kinds: string[], flagged: number }` (flagged = risk high or altered) and `closedAt` (ms) when the status becomes terminal. `listTickets` projects `documents`.
 

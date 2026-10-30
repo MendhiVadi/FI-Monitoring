@@ -10,7 +10,7 @@ const NOTE_WARN_AT = 1400;
 
 // Both buttons remove this box, so focus goes back to the field it describes
 // instead of falling out to the page.
-function FieldError({ id, fieldId, error, onRetry, onDismiss }: { id: string; fieldId: string; error: SaveError; onRetry?: () => void; onDismiss: () => void }) {
+export function FieldError({ id, fieldId, error, onRetry, onDismiss }: { id: string; fieldId: string; error: SaveError; onRetry?: () => void; onDismiss: () => void }) {
   const then = (action: () => void) => () => { document.getElementById(fieldId)?.focus(); action(); };
   return (
     <div role="alert" id={id} style={styles.fieldError}>

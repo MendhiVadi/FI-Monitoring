@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import disputeSettings from "../../../dispute-settings.json";
 import { cardStyle } from "./reporting.styles";
+import type { TrackLinkState } from "./lastTicket";
 
 export function Confirmation({ ticketId, onStartAgain }: { ticketId: string | null; onStartAgain: () => void }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -48,12 +49,19 @@ export function Confirmation({ ticketId, onStartAgain }: { ticketId: string | nu
             <button type="button" className="report-btn report-btn--secondary" onClick={() => window.print()}>Print or save</button>
           </div>
           <p role="status" style={{ minHeight: "1.5em", margin: "0.5rem 0 0", fontSize: "0.9rem" }}>{copyStatus}</p>
-          <p style={{ fontSize: "0.9rem", color: "#b8c4cc" }}>Keep this number. Quote it if you contact the project team about this report.</p>
+          <p style={{ fontSize: "0.9rem", color: "#b8c4cc" }}>
+            Keep this number private. Use it to <Link to="/track" state={{ reference: ticketId } satisfies TrackLinkState}>track this report</Link>,
+            and quote it if you contact the project team about this report.
+          </p>
         </>
       )}
       <h3 style={{ marginBottom: "0.25rem", fontSize: "1.05rem" }}>What happens next</h3>
       <ol>
         <li>Staff review the location and the details you gave.</li>
+        <li>
+          You can check the status at any time on <Link to="/track">Track a report</Link> with your reference number.
+          If staff ask for a new copy of a document, you can upload it there after verifying your phone.
+        </li>
         {/* With verification paused no number is collected, so nothing to promise. */}
         {disputeSettings.otpRequired && <li>Staff may contact you on your verified number if they need more information.</li>}
         <li>You get WhatsApp updates only if you chose them on the form. A delayed message does not mean your report was lost.</li>
@@ -62,7 +70,8 @@ export function Confirmation({ ticketId, onStartAgain }: { ticketId: string | nu
         This report is not a legal filing or government application, and staff do not decide who owns the land.
       </p>
       <div className="report-actions no-print">
-        <button type="button" className="report-btn" onClick={onStartAgain}>Report another dispute</button>
+        {ticketId && <Link to="/track" state={{ reference: ticketId } satisfies TrackLinkState} className="report-btn">Track this report</Link>}
+        <button type="button" className={ticketId ? "report-btn report-btn--secondary" : "report-btn"} onClick={onStartAgain}>Report another dispute</button>
         <Link to="/" className="report-btn report-btn--secondary">Return home</Link>
       </div>
     </section>

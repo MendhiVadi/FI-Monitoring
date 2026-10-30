@@ -1,13 +1,15 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
+import { appCheckOption } from "../../platform/appCheck";
+import { reportsPerIpDay } from "../../platform/limits";
 import { DISPUTE_OTP_SECRET } from "../../platform/secrets";
 import { normalizePhone } from "../otp/service";
 import { validateDocumentIds } from "../documents/rules";
-import { otpRequired } from "./params";
+import { limitValue, otpRequired } from "./params";
 import { submitDisputeTransaction, validateDisputeInput } from "./service";
 
 // Unauthenticated, so the instance count is the cost ceiling under a flood.
-export const submitDispute = onCall({ invoker: "public", maxInstances: 10, timeoutSeconds: 30,
+export const submitDispute = onCall({ ...appCheckOption(), invoker: "public", maxInstances: 10, timeoutSeconds: 30,
   secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   let input, documentIds, phone = "";
   try {
@@ -28,7 +30,7 @@ export const submitDispute = onCall({ invoker: "public", maxInstances: 10, timeo
       input, phone, address, requireOtp: otpRequired.value(), secret: DISPUTE_OTP_SECRET.value(), token,
       submissionId: typeof request.data?.submissionId === "string" ? request.data.submissionId : "",
       consent: request.data?.consent === true, consentVersion: request.data?.consentVersion,
-      whatsappUpdates: request.data?.whatsappUpdates === true, documentIds,
+      whatsappUpdates: request.data?.whatsappUpdates === true, documentIds, addressLimit: limitValue(reportsPerIpDay),
     });
   } catch (err) {
     if (err instanceof HttpsError) throw err;

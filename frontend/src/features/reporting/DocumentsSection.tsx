@@ -10,6 +10,7 @@ import {
 } from "./documentUploads";
 import { formatIdNumber, idNumberError, normaliseIdNumber, type IdNumberKind } from "./idNumbers";
 import type { UploadedDocument } from "./types";
+import { SelfieCapture } from "./SelfieCapture";
 
 const STATUS_LABEL: Record<UploadStatus, string> = {
   queued: "Waiting to upload…",
@@ -19,6 +20,9 @@ const STATUS_LABEL: Record<UploadStatus, string> = {
   error: "Not uploaded",
 };
 const ID_LABEL: Record<IdNumberKind, string> = { aadhaar: "Aadhaar number", pan: "PAN" };
+// The hologram check compares this photo with the straight Aadhaar upload.
+const AADHAAR_ANGLE_HOWTO = "How to: lay the card flat in good light without flash, tilt it about 30° towards a window or lamp until the hologram changes colour, and keep the whole card sharp in the frame. A paper e-Aadhaar print has no hologram, so skip this for one.";
+const BLOCKED_MESSAGE = "Verify your number again (below the form) before uploading.";
 
 interface DocumentsSectionProps {
   otherPartyType: string;
@@ -128,7 +132,7 @@ function DocumentKindRow({ kind, required, now, documents, allDocuments, items, 
 
   function choose() {
     setKindError(null);
-    if (blocked) { setKindError("Verify your number again (below the form) before uploading."); return; }
+    if (blocked) { setKindError(BLOCKED_MESSAGE); return; }
     if (numberError) { setNumberTouched(true); numberInput.current?.focus(); return; }
     fileInput.current?.click();
   }
@@ -169,8 +173,21 @@ function DocumentKindRow({ kind, required, now, documents, allDocuments, items, 
     restoreFocus();
   }
 
+  // The selfie panel opens only when an upload could go through.
+  function canStartSelfie() {
+    setKindError(null);
+    if (blocked) { setKindError(BLOCKED_MESSAGE); return false; }
+    return true;
+  }
+
+  function addSelfie(file: File) {
+    if (blocked) { setKindError(BLOCKED_MESSAGE); return; }
+    const problems = enqueueUploads(kind.id, [file], allDocuments, context());
+    setKindError(problems.length > 0 ? problems.join(" ") : null);
+  }
+
   function retry(item: UploadItem) {
-    if (blocked) { setKindError("Verify your number again (below the form) before uploading."); return; }
+    if (blocked) { setKindError(BLOCKED_MESSAGE); return; }
     // As for a new file: an invalid number would otherwise be dropped silently.
     if (numberError) { setNumberTouched(true); numberInput.current?.focus(); return; }
     const problem = retryUpload(item.localId, allDocuments, context());
@@ -179,7 +196,8 @@ function DocumentKindRow({ kind, required, now, documents, allDocuments, items, 
   }
 
   const errorText = kindError ?? (missing ? "Required: upload at least one file." : null);
-  const describedBy = [kind.hint && `${controlId}-hint`, errorText && `${controlId}-error`].filter(Boolean).join(" ") || undefined;
+  const howTo = kind.id === "aadhaar_angle" ? AADHAAR_ANGLE_HOWTO : null;
+  const describedBy = [kind.hint && `${controlId}-hint`, howTo && `${controlId}-howto`, errorText && `${controlId}-error`].filter(Boolean).join(" ") || undefined;
   const count = documents.length + items.length;
 
   return (
@@ -189,6 +207,7 @@ function DocumentKindRow({ kind, required, now, documents, allDocuments, items, 
         <span className={required ? "report-required" : "report-optional"}> ({required ? "required" : "optional"})</span>
       </h3>
       {kind.hint && <p id={`${controlId}-hint`} className="report-hint">{kind.hint}</p>}
+      {howTo && <p id={`${controlId}-howto`} className="report-hint">{howTo}</p>}
 
       {idKind && (
         <div className="report-field" style={{ margin: ".5rem 0 .75rem" }}>
@@ -271,11 +290,20 @@ function DocumentKindRow({ kind, required, now, documents, allDocuments, items, 
         </ul>
       )}
 
-      <input ref={fileInput} type="file" accept={ACCEPT} multiple className="report-sr-only" tabIndex={-1} aria-hidden="true" onChange={onFiles} />
-      <button type="button" id={controlId} className="report-btn report-btn--secondary" onClick={choose}
-        aria-describedby={describedBy}>
-        {count > 0 ? "Add another file" : "Choose file"}<span className="report-sr-only"> for {kind.label}</span>
-      </button>
+      {kind.id === "selfie" ? (
+        // Camera only: the liveness check needs three fresh poses, not a file from the gallery.
+        <SelfieCapture idPrefix={controlId} startId={controlId} optional={!required} startDescribedBy={describedBy}
+          startLabel={count > 0 ? "Take the selfie check again" : "Take the selfie check"}
+          onRequestStart={canStartSelfie} onCapture={addSelfie} />
+      ) : (
+        <>
+          <input ref={fileInput} type="file" accept={ACCEPT} multiple className="report-sr-only" tabIndex={-1} aria-hidden="true" onChange={onFiles} />
+          <button type="button" id={controlId} className="report-btn report-btn--secondary" onClick={choose}
+            aria-describedby={describedBy}>
+            {count > 0 ? "Add another file" : "Choose file"}<span className="report-sr-only"> for {kind.label}</span>
+          </button>
+        </>
+      )}
       {errorText && <p id={`${controlId}-error`} className="report-field-error" role="alert">{errorText}</p>}
     </div>
   );

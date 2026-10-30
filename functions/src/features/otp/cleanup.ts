@@ -16,6 +16,11 @@ export const purgeExpiredOtps = onSchedule({ schedule: "every 60 minutes", timeo
     ["geocodeCache", "expiresAt", now],
     ["submissionReceipts", "expiresAt", now],
     ["otpSendLimits", "windowStartedAt", now - 60 * 60 * 1000],
+    // Status lookups count in hourly windows; a day's margin keeps the sweep
+    // well clear of any window still in use.
+    ["statusLookupLimits", "windowStartedAt", now - DAY_MS],
+    // Per-phone notification ceilings expire a day after their newest send.
+    ["notificationLimits", "expiresAt", now],
     ["reporterLimits", "windowStartedAt", now - DAY_MS],
     ["whatsappDeliveries", "windowStartedAt", now - 30 * DAY_MS],
     ["notificationPreferences", "expiresAt", now],

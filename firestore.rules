@@ -3,8 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // An officer is an account with an entry in the `officers` allow-list.
-    // That collection is Admin-SDK-only (see below), so this cannot be
+    // Any staff account (viewer, officer or admin) with an entry in the
+    // `officers` allow-list and a sign-in under eight hours old. That
+    // collection is Admin-SDK-only (see below), so this cannot be
     // self-granted from a client.
     function isOfficer() {
       return request.auth != null
@@ -13,6 +14,17 @@ service cloud.firestore {
         && timestamp.value(request.auth.token.auth_time * 1000) <= request.time + duration.value(60, 's')
         && request.time < timestamp.value(request.auth.token.auth_time * 1000) + duration.value(8, 'h')
         && exists(/databases/$(database)/documents/officers/$(request.auth.uid));
+    }
+
+    // Raw case data (names, phone numbers, narratives, coordinates, ID
+    // documents) is for officers and administrators. A missing `access` field
+    // is an account allow-listed before access levels existed, all full
+    // officers; "viewer", null or any unknown value reads nothing raw and sees
+    // cases only through the masked callables (getMaskedCase, listTickets).
+    // Mirrors normalizeAccess in functions/src/features/tickets/access.ts.
+    function canReadCases() {
+      return isOfficer()
+        && get(/databases/$(database)/documents/officers/$(request.auth.uid)).data.get("access", "officer") in ["officer", "admin"];
     }
 
     // Allow-list of officer accounts. Only the Admin SDK (Cloud
@@ -31,13 +43,13 @@ service cloud.firestore {
     }
 
     match /tickets/{ticketId}/notes/{noteId} {
-      allow get: if isOfficer();
-      allow list: if isOfficer() && isPagedQuery();
+      allow get: if canReadCases();
+      allow list: if canReadCases() && isPagedQuery();
       allow write: if false;
     }
     match /tickets/{ticketId}/events/{eventId} {
-      allow get: if isOfficer();
-      allow list: if isOfficer() && isPagedQuery();
+      allow get: if canReadCases();
+      allow list: if canReadCases() && isPagedQuery();
       allow write: if false;
     }
 
@@ -55,8 +67,8 @@ service cloud.firestore {
     match /tickets/{ticketId} {
       // Registry browsing goes through `listTickets`, which projects away the
       // narrative; direct queries are still capped to one page.
-      allow get: if isOfficer();
-      allow list: if isOfficer() && isPagedQuery();
+      allow get: if canReadCases();
+      allow list: if canReadCases() && isPagedQuery();
 
       // Every write goes through a trusted Cloud Function on the Admin SDK,
       // which bypasses these rules: `submitDispute` creates tickets, and
@@ -72,8 +84,8 @@ service cloud.firestore {
     // only the upload, submit, review and purge functions (Admin SDK) write.
     // The files themselves live in Storage, which no client can reach.
     match /caseDocuments/{documentId} {
-      allow get: if isOfficer();
-      allow list: if isOfficer() && isPagedQuery();
+      allow get: if canReadCases();
+      allow list: if canReadCases() && isPagedQuery();
       allow write: if false;
     }
 
@@ -94,6 +106,25 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /whatsappDeliveries/{eventId} {
+      allow read, write: if false;
+    }
+    // Wave 2 server state: per-phone notification ceilings and per-address
+    // status-lookup counters (hashed keys), open re-upload requests (case and
+    // document ids), the escalation backfill cursor and the insights snapshot,
+    // which staff read through getInsights, not directly.
+    match /notificationLimits/{phoneHash} {
+      allow read, write: if false;
+    }
+    match /statusLookupLimits/{addrHash} {
+      allow read, write: if false;
+    }
+    match /documentRequests/{requestId} {
+      allow read, write: if false;
+    }
+    match /escalationState/{stateId} {
+      allow read, write: if false;
+    }
+    match /insightsCache/{snapshotId} {
       allow read, write: if false;
     }
 

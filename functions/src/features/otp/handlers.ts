@@ -1,6 +1,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
+import { appCheckOption } from "../../platform/appCheck";
+import { otpSendsPerIpHour } from "../../platform/limits";
 import { DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } from "../../platform/secrets";
+import { limitValue } from "../disputes/params";
 import { sendWhatsAppTemplate, WhatsAppSendError } from "../whatsapp/client";
 import { normalizePhone, assertIpUnderSendLimit, issueOtp, confirmOtp, recordOtpDelivery, OtpRateLimitError } from "./service";
 import { addressBucket, hashId } from "./identity";
@@ -15,7 +18,7 @@ const PUBLIC_MAX_INSTANCES = 10;
 // verified phone is proven to `submitDispute` by looking up that record —
 // not by carrying a signed-in session.
 export const requestDisputeOtp = onCall(
-  { invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 60,
+  { ...appCheckOption(), invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 60,
     secrets: [DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID] },
   async (request) => {
     let phone: string;
@@ -31,7 +34,7 @@ export const requestDisputeOtp = onCall(
     const address = request.rawRequest.ip;
     if (!address) throw new HttpsError("unavailable", "Please try again later.");
     try {
-      await assertIpUnderSendLimit(db, hashId(addressBucket(address)));
+      await assertIpUnderSendLimit(db, hashId(addressBucket(address)), limitValue(otpSendsPerIpHour));
     } catch (err) {
       // Deliberately a fixed message: the underlying error may carry Firestore
       // internals, and this endpoint is unauthenticated.
@@ -68,7 +71,7 @@ export const requestDisputeOtp = onCall(
   }
 );
 
-export const verifyDisputeOtp = onCall({ invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 30,
+export const verifyDisputeOtp = onCall({ ...appCheckOption(), invoker: "public", maxInstances: PUBLIC_MAX_INSTANCES, timeoutSeconds: 30,
   secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   let phone: string;
   try {

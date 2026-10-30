@@ -14,7 +14,7 @@ export const PENDING_TTL_MINUTES = DOCS.pendingTtlMinutes;
 const EXPIRY_MARGIN_MS = 2 * 60_000;
 // The server screens before replying (up to its 120 s timeout), longer than
 // the SDK's 70 s default; a client timeout would orphan a stored upload.
-const UPLOAD_TIMEOUT_MS = 180_000;
+export const UPLOAD_TIMEOUT_MS = 180_000;
 const UNAUTHENTICATED_MESSAGE = "Your phone verification expired. Verify your number again below the form, then select Retry.";
 
 export type DocumentKind = (typeof DOCS.kinds)[number];
@@ -47,7 +47,7 @@ const EXTENSION_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "imag
 export const ACCEPT = [...DOCS.acceptedTypes, ...Object.keys(EXTENSION_TYPES).map((ext) => `.${ext}`)].join(",");
 // A non-standard MIME such as image/jpg or image/pjpeg also falls back to the
 // extension; the server checks the magic bytes either way.
-function contentTypeOf(file: File): string | null {
+export function contentTypeOf(file: File): string | null {
   const type = DOCS.acceptedTypes.includes(file.type) ? file.type : EXTENSION_TYPES[file.name.split(".").pop()?.toLowerCase() ?? ""] ?? "";
   return DOCS.acceptedTypes.includes(type) ? type : null;
 }
@@ -129,6 +129,18 @@ export function documentProblems(caseType: CaseType, documents: UploadedDocument
   return problems;
 }
 
+/** A reporter-facing reason the file cannot be sent (type, size), or null. */
+export function fileProblem(file: File): string | null {
+  if (!contentTypeOf(file)) return `“${file.name}” is not a JPEG, PNG, WebP or PDF file.`;
+  if (file.size > MAX_FILE_BYTES) {
+    // A size just over the limit rounds to the limit itself, which would read as allowed.
+    const size = formatSize(file.size), limit = formatSize(MAX_FILE_BYTES);
+    return `“${file.name}” is ${size === limit ? `just over ${size}` : size}. Each file must be ${limit} or smaller.`;
+  }
+  if (file.size === 0) return `“${file.name}” is empty.`;
+  return null;
+}
+
 /** Checks and queues files; returns reporter-facing reasons for any not added. */
 export function enqueueUploads(kind: string, files: File[], documents: UploadedDocument[], ctx: UploadContext): string[] {
   // Failed files from a cleared draft would otherwise keep their contents in memory.
@@ -136,15 +148,8 @@ export function enqueueUploads(kind: string, files: File[], documents: UploadedD
   const problems: string[] = [];
   let free = MAX_FILES - usedSlots(ctx.submissionId, documents);
   for (const file of files) {
-    const contentType = contentTypeOf(file);
-    if (!contentType) { problems.push(`“${file.name}” is not a JPEG, PNG, WebP or PDF file.`); continue; }
-    if (file.size > MAX_FILE_BYTES) {
-      // A size just over the limit rounds to the limit itself, which would read as allowed.
-      const size = formatSize(file.size), limit = formatSize(MAX_FILE_BYTES);
-      problems.push(`“${file.name}” is ${size === limit ? `just over ${size}` : size}. Each file must be ${limit} or smaller.`);
-      continue;
-    }
-    if (file.size === 0) { problems.push(`“${file.name}” is empty.`); continue; }
+    const problem = fileProblem(file);
+    if (problem) { problems.push(problem); continue; }
     if (free <= 0) { problems.push(`“${file.name}” was not added: a report can have at most ${MAX_FILES} files. Remove one to add another.`); continue; }
     free -= 1;
     const localId = `upload-${++sequence}`;
@@ -267,7 +272,7 @@ export function documentSubmitError(err: unknown): string | null {
   return null;
 }
 
-function readBase64(file: File): Promise<string> {
+export function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
