@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
 import { DISPUTE_OTP_SECRET } from "../../platform/secrets";
+import { clientAddress } from "../../platform/network";
 import { normalizePhone } from "../otp/service";
 import { validateDocumentIds } from "../documents/rules";
 import { otpRequired } from "./params";
@@ -17,7 +18,7 @@ export const submitDispute = onCall({ invoker: "public", maxInstances: 10, timeo
   } catch (err) {
     throw new HttpsError("invalid-argument", err instanceof Error ? err.message : "Invalid dispute details.");
   }
-  const address = request.rawRequest.ip;
+  const address = clientAddress(request.rawRequest);
   if (!address) throw new HttpsError("unavailable", "Please try again later.");
   // Only a well-formed token can match a grant; anything else is dropped
   // here instead of being hashed, at any length, into document ids.

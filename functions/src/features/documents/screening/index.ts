@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import contract from "../../../platform/contracts/dispute.json";
+import { sniffDocumentType } from "../rules";
 import { hashId } from "../../otp/identity";
 import { decodeAadhaarQr, uidaiPublicKey, type SecureQrResult } from "./aadhaarQr";
 import { descriptorDistance, faceModelDir, scanFaces, type FaceScan } from "./faces";
@@ -69,15 +70,8 @@ const ID_NUMBER_KIND = new Map<string, string>(
 // Kinds where text is not expected, so OCR and name checks are skipped.
 const PICTURE_KINDS = new Set(["site_photo"]);
 
-export function sniffContentType(bytes: Buffer): string | null {
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
-  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
-  if (bytes.length >= 12 && bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") return "image/webp";
-  // The PDF header may follow a little leading junk; readers accept it within 1 KiB.
-  const head = bytes.subarray(0, 1024).indexOf("%PDF-", 0, "latin1");
-  if (head >= 0) return "application/pdf";
-  return null;
-}
+// One implementation for the engine and the fallback path (see rules.ts).
+export const sniffContentType = sniffDocumentType;
 
 let certificate: { pem: string | null } | null = null;
 export function loadUidaiCertificate(): string | null {
