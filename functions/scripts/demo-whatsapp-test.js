@@ -8,17 +8,22 @@
  * Manager already set up on the Firebase project (see docs/OTP_WHATSAPP_OPERATIONS.md).
  *
  * Usage:
- *   npm run demo:whatsapp
- *   npm run demo:whatsapp -- +919820166830 +918910063931
+ *   npm run demo:whatsapp -- +91XXXXXXXXXX [+91YYYYYYYYYY ...]
+ *
+ * Recipients are given on the command line only: a phone number is personal
+ * data and must not be committed to the repository as a default.
  */
 const admin = require("firebase-admin");
 
-const DEFAULT_NUMBERS = ["+919820166830", "+918910063931"];
-const numbers = process.argv.slice(2).length ? process.argv.slice(2) : DEFAULT_NUMBERS;
+const numbers = process.argv.slice(2);
+if (!numbers.length) {
+  console.error("Usage: npm run demo:whatsapp -- <toPhoneE164> [more numbers]");
+  process.exit(1);
+}
 
 for (const phone of numbers) {
   if (!/^\+[1-9]\d{6,14}$/.test(phone)) {
-    console.error(`Invalid phone number "${phone}" - expected international format like +919820166830`);
+    console.error(`Invalid phone number "${phone}" - expected international format like +91XXXXXXXXXX`);
     process.exit(1);
   }
 }

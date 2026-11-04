@@ -7,10 +7,10 @@
  */
 const GRAPH_API_VERSION = "v23.0";
 const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1204619962744881";
+const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-if (!accessToken) {
-  console.error("Set WHATSAPP_ACCESS_TOKEN in your shell first.");
+if (!accessToken || !phoneNumberId) {
+  console.error("Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID in your shell first.");
   process.exit(1);
 }
 

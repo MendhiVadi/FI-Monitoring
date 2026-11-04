@@ -125,8 +125,15 @@ multiple proxy instances share the upstream rate limit.
 Security model: `firestore.rules` allows ticket reads to allow-listed officers
 only; all writes go through Cloud Functions on the Admin SDK. `disputeOtps`,
 `otpSendLimits`, `reporterLimits`, verification grants, retry receipts, notification
-state and map service state are closed to every client. `caseDocuments` is
-readable by allow-listed officers only; `storage.rules` deny all client access.
+state, map service state and the `documentAccessLog` (who opened which identity
+document) are closed to every client. `caseDocuments` is readable by allow-listed
+officers only; `storage.rules` deny all client access. Per-address quotas on the
+public callables key on the address appended by our own proxy
+(`functions/src/platform/network.ts`), never on `req.ip`, which under the
+Functions Framework's "trust proxy" setting is the caller-written first entry of
+`X-Forwarded-For`. Both hosts send a Content-Security-Policy, HSTS and COOP.
+`docs/SECURITY_REVIEW.md` records the 2026-11-04 review, what was fixed and what
+is still open (MFA, App Check, Aadhaar-at-rest encryption, screening isolation).
 
 ## Remaining product and release work
 

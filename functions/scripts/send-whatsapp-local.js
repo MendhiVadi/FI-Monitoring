@@ -10,7 +10,7 @@
  * Usage (PowerShell):
  *   $env:WHATSAPP_ACCESS_TOKEN = "paste-your-token-here"
  *   $env:WHATSAPP_PHONE_NUMBER_ID = "your-phone-number-id"
- *   node scripts/send-whatsapp-local.js request_created +919820166830 "Forest Rights dispute" "TICKET-1" "Open / Awaiting Review"
+ *   node scripts/send-whatsapp-local.js request_created +91XXXXXXXXXX "Forest Rights dispute" "TICKET-1" "Open / Awaiting Review"
  *
  * Args: <templateName> <toPhoneE164> <bodyParam1> [bodyParam2 ...]
  */
@@ -18,7 +18,7 @@ const GRAPH_API_VERSION = "v23.0";
 
 const [templateName, to, ...params] = process.argv.slice(2);
 const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "1204619962744881";
+const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
 if (!templateName || !to) {
   console.error("Usage: node scripts/send-whatsapp-local.js <templateName> <toPhoneE164> [bodyParam1 bodyParam2 ...]");
@@ -29,7 +29,7 @@ if (!accessToken || !phoneNumberId) {
   process.exit(1);
 }
 if (!/^\+[1-9]\d{6,14}$/.test(to)) {
-  console.error(`Invalid phone number "${to}" - expected international format like +919820166830`);
+  console.error(`Invalid phone number "${to}" - expected international format like +91XXXXXXXXXX`);
   process.exit(1);
 }
 

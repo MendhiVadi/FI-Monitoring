@@ -71,7 +71,10 @@ status changes and added staff notes notify the ticket's verified/opted-in repor
 private note contents are not included. Transport endpoints explicitly allow public
 invocation; officer authorization, OTP checks and webhook signatures run inside them.
 `platform/firebase.ts` initializes Admin once. `platform/secrets.ts` defines secret
-references, not secret values. Platform modules must not import features.
+references, not secret values. `platform/network.ts` derives the caller's address for
+quotas from the trusted end of `X-Forwarded-For` (see `TRUSTED_PROXY_HOPS`); handlers
+must use `clientAddress(request.rawRequest)` and never `rawRequest.ip`. Platform
+modules must not import features.
 
 ## Data ownership
 
