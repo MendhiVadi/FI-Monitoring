@@ -3,32 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { signInStaff, signOutStaff, readableStaffAuthError, useStaffSession } from "./staffSession";
 import type { LoginRedirectState } from "./ProtectedRoute";
 
-/* ---------------- CAPTCHA GENERATOR HELPERS ---------------- */
-function generateCaptchaCode(length = 6): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Omit ambiguous characters like 0, O, 1, I
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-// Spoken letters like B/D/P/E/V sound alike, so the audio and text versions
-// use phonetic words: "B as in Bravo, number seven, …".
-const PHONETIC: Record<string, string> = {
-  A: "Alpha", B: "Bravo", C: "Charlie", D: "Delta", E: "Echo", F: "Foxtrot", G: "Golf", H: "Hotel",
-  J: "Juliett", K: "Kilo", L: "Lima", M: "Mike", N: "November", P: "Papa", Q: "Quebec", R: "Romeo",
-  S: "Sierra", T: "Tango", U: "Uniform", V: "Victor", W: "Whiskey", X: "X-ray", Y: "Yankee", Z: "Zulu",
-};
-const DIGIT_WORDS: Record<string, string> = { "2": "two", "3": "three", "4": "four", "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine" };
-function spellCaptcha(code: string) {
-  return code.split("").map(c => (PHONETIC[c] ? `${c} as in ${PHONETIC[c]}` : `number ${DIGIT_WORDS[c] ?? c}`)).join(", ");
-}
-
 /* ---------------- FAILED SIGN-IN BACKOFF ---------------- */
 // Client-side friction on top of Firebase's own throttling: after a few wrong
-// passwords each further attempt waits longer. Kept in sessionStorage so a page
-// reload does not reset it; storage can be unavailable, so it degrades to memory.
+// passwords each further attempt waits longer. This is a courtesy to a typing
+// officer, not a security control: anything in this file can be bypassed by a
+// script, so brute-force protection is Firebase Auth's job (and MFA, once it is
+// enabled for the project). Kept in sessionStorage so a page reload does not
+// reset it; storage can be unavailable, so it degrades to memory.
 const BACKOFF_KEY = "staff-login-backoff";
 const FREE_ATTEMPTS = 3, BASE_DELAY_MS = 5_000, MAX_DELAY_MS = 5 * 60_000;
 let backoffMemory = { failures: 0, until: 0 };
@@ -55,7 +36,7 @@ function recordFailedSignIn() {
 const CREDENTIAL_ERRORS = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"];
 
 /* ---------------- FIELD VALIDATION ---------------- */
-export type LoginField = "email" | "password" | "captcha";
+export type LoginField = "email" | "password";
 type FieldErrors = Partial<Record<LoginField, string>>;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function emailError(value: string) {
@@ -92,13 +73,6 @@ export function useLogin() {
   const [rememberOfficer, setRememberOfficer] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
 
-  // Security CAPTCHA state
-  const [captchaCode, setCaptchaCode] = useState(() => generateCaptchaCode(6));
-  const [captchaInput, setCaptchaInputValue] = useState("");
-  // Text version of the code, shown only when the browser cannot speak it.
-  const [captchaSpelled, setCaptchaSpelled] = useState<string | null>(null);
-  const [canvasEl, canvasRef] = useState<HTMLCanvasElement | null>(null);
-
   // Account recovery explainer
   const [showForgotModal, setShowForgotModal] = useState(false);
 
@@ -115,12 +89,11 @@ export function useLogin() {
   // focused again after a second identical error.
   const emailRef = useRef<HTMLInputElement | null>(null);
   const passwordRef = useRef<HTMLInputElement | null>(null);
-  const captchaRef = useRef<HTMLInputElement | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ field: LoginField; n: number } | null>(null);
   const requestFocus = (field: LoginField) => setFocusRequest(prev => ({ field, n: (prev?.n ?? 0) + 1 }));
   useEffect(() => {
     if (!focusRequest) return;
-    const input = { email: emailRef, password: passwordRef, captcha: captchaRef }[focusRequest.field].current;
+    const input = { email: emailRef, password: passwordRef }[focusRequest.field].current;
     input?.focus();
     if (focusRequest.field === "password") input?.select();
   }, [focusRequest]);
@@ -158,142 +131,11 @@ export function useLogin() {
   const clearFieldError = (field: LoginField) => setFieldErrors(prev => (prev[field] ? { ...prev, [field]: undefined } : prev));
   const setEmail = (value: string) => { setEmailValue(value); clearFieldError("email"); };
   const setPassword = (value: string) => { setPasswordValue(value); clearFieldError("password"); };
-  const setCaptchaInput = (value: string) => { setCaptchaInputValue(value); clearFieldError("captcha"); };
   // Blur only reports a malformed address; an empty field is reported on submit.
   const handleEmailBlur = () => { if (email.trim()) setFieldErrors(prev => ({ ...prev, email: emailError(email) })); };
 
   const handlePasswordKey = (e: React.KeyboardEvent<HTMLInputElement>) => setCapsLock(e.getModifierState("CapsLock"));
   const handlePasswordBlur = () => setCapsLock(false);
-
-  // Render Security CAPTCHA onto HTML5 Canvas. The canvas is a callback ref
-  // because the form (and so the canvas) mounts only after the session check,
-  // later than the first code is generated.
-  useEffect(() => {
-    const canvas = canvasEl;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Background gradient with grid
-    const bgGrad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    bgGrad.addColorStop(0, "#081324");
-    bgGrad.addColorStop(1, "#030811");
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Subtle security grid
-    ctx.strokeStyle = "rgba(123, 216, 159, 0.08)";
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvas.width; x += 16) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += 12) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
-
-    // Noise dots
-    for (let i = 0; i < 45; i++) {
-      ctx.fillStyle = `rgba(123, 216, 159, ${Math.random() * 0.4})`;
-      ctx.beginPath();
-      ctx.arc(
-        Math.random() * canvas.width,
-        Math.random() * canvas.height,
-        Math.random() * 1.6 + 0.4,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-
-    // Distorted crossing curves
-    for (let i = 0; i < 3; i++) {
-      ctx.strokeStyle = i % 2 === 0 ? "rgba(123, 216, 159, 0.35)" : "rgba(96, 165, 250, 0.35)";
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(0, Math.random() * canvas.height);
-      ctx.bezierCurveTo(
-        canvas.width * 0.3,
-        Math.random() * canvas.height,
-        canvas.width * 0.7,
-        Math.random() * canvas.height,
-        canvas.width,
-        Math.random() * canvas.height
-      );
-      ctx.stroke();
-    }
-
-    // Draw stylized glyphs with jitter and rotation
-    const chars = captchaCode.split("");
-    const charSpacing = canvas.width / (chars.length + 1);
-    ctx.textBaseline = "middle";
-
-    chars.forEach((char, index) => {
-      ctx.save();
-      const x = charSpacing * (index + 1) + (Math.random() * 6 - 3);
-      const y = canvas.height / 2 + (Math.random() * 6 - 3);
-      const angle = (Math.random() * 32 - 16) * (Math.PI / 180);
-
-      ctx.translate(x, y);
-      ctx.rotate(angle);
-      ctx.font = `bold ${Math.floor(Math.random() * 4 + 22)}px 'Courier New', monospace`;
-
-      // Shadow
-      ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-      ctx.fillText(char, 2, 2);
-
-      // Character fill
-      ctx.fillStyle = index % 2 === 0 ? "#7bd89f" : "#93c5fd";
-      ctx.fillText(char, 0, 0);
-
-      ctx.restore();
-    });
-  }, [captchaCode, canvasEl]);
-
-  // Regenerate the CAPTCHA image/input without touching any error message
-  // that the caller just set (used on failed-login paths).
-  const regenerateCaptcha = () => {
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    setCaptchaCode(generateCaptchaCode(6));
-    setCaptchaInputValue("");
-    setCaptchaSpelled(null);
-  };
-
-  // "New code" button — also clears any stale error.
-  const handleRefreshCaptcha = () => {
-    regenerateCaptcha();
-    setErrorMessage(null);
-    setErrorField(null);
-    clearFieldError("captcha");
-  };
-
-  // Stop any in-progress CAPTCHA readout when the page unmounts, so it does
-  // not keep announcing a code that is no longer on screen.
-  useEffect(() => {
-    return () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    };
-  }, []);
-
-  // Audio CAPTCHA. Where speech is unavailable or fails, show the same
-  // phonetic spelling as text instead of an alert().
-  const handleSpeakCaptcha = () => {
-    const spelled = spellCaptcha(captchaCode);
-    if (!("speechSynthesis" in window)) { setCaptchaSpelled(spelled); return; }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(`The code is: ${spelled}.`);
-    utterance.rate = 0.8;
-    utterance.pitch = 1.0;
-    utterance.onerror = (event) => { if (event.error !== "canceled" && event.error !== "interrupted") setCaptchaSpelled(spelled); };
-    window.speechSynthesis.speak(utterance);
-  };
 
   // Submit Email & Password login against real Firebase Auth, gated by the
   // officers/{uid} allow-list — see ./staffSession for how that boundary
@@ -312,21 +154,12 @@ export function useLogin() {
     const errors: FieldErrors = {
       email: emailError(email),
       password: password ? undefined : "Enter your password.",
-      captcha: captchaInput.trim() ? undefined : "Type the 6 characters shown in the image.",
     };
-    const firstInvalid = (["email", "password", "captcha"] as const).find(field => errors[field]);
+    const firstInvalid = (["email", "password"] as const).find(field => errors[field]);
     setFieldErrors(errors);
     setErrorMessage(null);
     setErrorField(null);
     if (firstInvalid) { requestFocus(firstInvalid); return; }
-
-    // Validate CAPTCHA
-    if (captchaInput.trim().toUpperCase() !== captchaCode.toUpperCase()) {
-      regenerateCaptcha();
-      setFieldErrors({ captcha: "Those characters did not match. A new code is shown; type it again." });
-      requestFocus("captcha");
-      return;
-    }
 
     submitting.current = true;
     setBusy(true);
@@ -341,12 +174,11 @@ export function useLogin() {
       // Only a rejected credential is a guess; a dropped connection or a failed
       // allow-list read (Firestore "unavailable") must not lock out an officer.
       if (CREDENTIAL_ERRORS.includes(code)) startWait(recordFailedSignIn().until);
-      regenerateCaptcha();
       if (code === "auth/invalid-email") {
         setFieldErrors({ email: readableStaffAuthError(err) });
         requestFocus("email");
       } else {
-        setErrorMessage(`${readableStaffAuthError(err)} A new security code is shown; type it again too.`);
+        setErrorMessage(readableStaffAuthError(err));
         if (CREDENTIAL_ERRORS.includes(code)) { setErrorField("password"); requestFocus("password"); }
       }
     } finally {
@@ -381,13 +213,8 @@ export function useLogin() {
     handlePasswordBlur,
     rememberOfficer,
     setRememberOfficer,
-    captchaInput,
-    setCaptchaInput,
-    captchaSpelled,
-    canvasRef,
     emailRef,
     passwordRef,
-    captchaRef,
     showForgotModal,
     setShowForgotModal,
     busy,
@@ -396,8 +223,6 @@ export function useLogin() {
     errorMessage,
     errorField,
     fieldErrors,
-    handleRefreshCaptcha,
-    handleSpeakCaptcha,
     handleEmailLogin,
     handleContinue,
     handleSignOut,

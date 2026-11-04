@@ -1,6 +1,6 @@
 import { Modal } from "../../shared/ui/Modal";
 import {
-  inputStyle, invalidInputStyle, submitBtnStyle, iconBtnStyle, secondaryBtnStyle, fieldErrorStyle, hintStyle,
+  inputStyle, invalidInputStyle, submitBtnStyle, secondaryBtnStyle, fieldErrorStyle,
 } from "./login.styles";
 import { ServerClock } from "./ServerClock";
 import { Spinner } from "./Spinner";
@@ -29,13 +29,8 @@ export function Login() {
     handlePasswordBlur,
     rememberOfficer,
     setRememberOfficer,
-    captchaInput,
-    setCaptchaInput,
-    captchaSpelled,
-    canvasRef,
     emailRef,
     passwordRef,
-    captchaRef,
     showForgotModal,
     setShowForgotModal,
     busy,
@@ -44,8 +39,6 @@ export function Login() {
     errorMessage,
     errorField,
     fieldErrors,
-    handleRefreshCaptcha,
-    handleSpeakCaptcha,
     handleEmailLogin,
     handleContinue,
     handleSignOut,
@@ -344,81 +337,6 @@ export function Login() {
                     {capsLock ? "Caps Lock is on" : ""}
                   </p>
                 </div>
-
-                {/* Security CAPTCHA Section */}
-                <fieldset
-                  style={{
-                    margin: 0,
-                    minWidth: 0,
-                    background: "rgba(0, 0, 0, 0.25)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: 10,
-                    padding: "1rem",
-                  }}
-                >
-                  <legend style={{ padding: "0 0.35rem", fontSize: "0.84rem", fontWeight: 600, color: "#e2e8f0" }}>
-                    Security check
-                  </legend>
-
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
-                    <canvas
-                      ref={canvasRef}
-                      width={180}
-                      height={46}
-                      role="img"
-                      aria-label="CAPTCHA image. Use Listen for an audio version."
-                      style={{
-                        maxWidth: "100%",
-                        borderRadius: 6,
-                        border: "1px solid rgba(123, 216, 159, 0.3)",
-                        background: "#030811",
-                      }}
-                    />
-                    <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <button type="button" onClick={handleSpeakCaptcha} style={iconBtnStyle}>
-                        Listen
-                      </button>
-                      <button type="button" onClick={handleRefreshCaptcha} style={iconBtnStyle}>
-                        New code
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Kept mounted (empty) so the spelling is announced when it appears. */}
-                  <p role="status" style={captchaSpelled ? { ...hintStyle, color: "#cbd5e1" } : { margin: 0 }}>
-                    {captchaSpelled ? `Audio is not available in this browser. The code is: ${captchaSpelled}.` : ""}
-                  </p>
-
-                  <label htmlFor="captcha" style={{ ...labelStyle, marginTop: "0.85rem" }}>
-                    Type the characters shown
-                  </label>
-                  <input
-                    ref={captchaRef}
-                    id="captcha"
-                    type="text"
-                    required
-                    maxLength={6}
-                    autoComplete="off"
-                    autoCapitalize="characters"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    value={captchaInput}
-                    onChange={(e) => setCaptchaInput(e.target.value.toUpperCase())}
-                    aria-invalid={fieldErrors.captcha ? true : undefined}
-                    aria-describedby={describedBy("captcha-hint", fieldErrors.captcha && "captcha-error")}
-                    style={{
-                      ...inputStyle,
-                      letterSpacing: "0.2em",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      ...(fieldErrors.captcha ? invalidInputStyle : null),
-                    }}
-                  />
-                  <p id="captcha-hint" style={hintStyle}>Not case-sensitive · 6 characters</p>
-                  {fieldErrors.captcha && (
-                    <p id="captcha-error" role="alert" style={fieldErrorStyle}>{fieldErrors.captcha}</p>
-                  )}
-                </fieldset>
 
                 {/* Remember Session */}
                 <label
