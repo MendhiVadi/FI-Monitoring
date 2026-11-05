@@ -12,7 +12,7 @@ fixes and open items: `docs/SECURITY_REVIEW.md`. What changes operationally:
   on the Functions codebase, or quotas will key on the load balancer's address.
 - **Document access log.** `getCaseDocumentFile` writes one `documentAccessLog`
   record per officer view; the collection is server-only. Deploy `firestore.rules`
-  together with the functions. The log has no automatic deletion yet.
+  together with the functions. Entries are deleted after 365 days by the daily purge.
 - **Response headers.** `firebase.json` and `frontend/vercel.json` now send
   `Content-Security-Policy`, `Strict-Transport-Security` and
   `Cross-Origin-Opener-Policy`. The policy was verified against the built app for

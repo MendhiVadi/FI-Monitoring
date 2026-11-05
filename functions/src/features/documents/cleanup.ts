@@ -1,3 +1,4 @@
+import * as admin from "firebase-admin";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { db } from "../../platform/firebase";
 import { purgeExpiredRecords } from "../otp/service";
@@ -7,6 +8,10 @@ import { firebaseStore } from "./storage";
 
 const BATCH_SIZE = 100;
 const MAX_BATCHES = 5;
+// Who-opened-what records outlive the documents they describe (90 days after a
+// case closes) so an access can still be questioned after the file is gone, but
+// they name officers and cases, so they are not kept indefinitely either.
+export const ACCESS_LOG_RETENTION_DAYS = 365;
 type Pass = () => Promise<{ deleted: number; scanned: number; leftOver?: number }>;
 
 // Daily: abandoned uploads expire within hours, and closed cases are only
@@ -18,6 +23,8 @@ export const purgeExpiredDocuments = onSchedule({ schedule: "every 24 hours", ti
     ["pendingDocuments", () => purgeDocumentBatch(db, firebaseStore, "expiresAt", now, BATCH_SIZE)],
     ["closedCaseDocuments", () => purgeDocumentBatch(db, firebaseStore, "purgeAt", now, BATCH_SIZE)],
     ["documentUploadLimits", () => purgeExpiredRecords(db, "documentUploadLimits", "windowStartedAt", now - DAY_MS, BATCH_SIZE)],
+    ["documentAccessLog", () => purgeExpiredRecords(db, "documentAccessLog", "at",
+      admin.firestore.Timestamp.fromMillis(now - ACCESS_LOG_RETENTION_DAYS * DAY_MS), BATCH_SIZE)],
   ];
   let failures = 0;
   for (const [name, pass] of passes) {

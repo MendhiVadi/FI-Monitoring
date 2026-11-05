@@ -146,7 +146,8 @@ is still open (MFA, App Check, Aadhaar-at-rest encryption, screening isolation).
   integration work. See `docs/FRA_DEMO.md` for schema and provenance.
 - Confirm the real service operator, support channel and case-retention policy
   before public launch. Temporary-state cleanup is implemented and uploaded
-  documents are deleted 90 days after a case closes; the case records themselves
+  documents are deleted 90 days after a case closes and document-access log entries
+  after one year; the case records themselves
   have no automatic deletion period configured.
 - Document screening needs UIDAI's Secure QR certificate at
   `functions/assets/uidai/uidai-secure-qr.pem` before the QR signature check can

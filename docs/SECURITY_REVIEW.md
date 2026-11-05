@@ -24,7 +24,7 @@ authentication bypass, injection or cross-reporter data exposure was found.
 | 9 | Untrusted-file parsing (sharp, pdf.js, exifr, tesseract, zxing, OpenJPEG) runs in the same process as the Admin SDK credentials. | Medium | **Open.** Move `uploadDisputeDocument` to its own service / least-privilege service account scoped to the documents bucket. |
 | 10 | Staff access is email + password only; no MFA, no App Check; every officer sees every case; `officers.role` is not used for authorization. | Medium | **Open.** Enable Firebase Auth MFA (Identity Platform) and email-enumeration protection; add App Check to the public callables; introduce role/region scoping if the pilot needs it. |
 | 11 | `idNumberFull` and raw OCR text (containing Aadhaar numbers) stored in plaintext in `caseDocuments`. | Medium (compliance) | **Open.** A deliberate mock-up decision (see `vault/Documents-and-Screening.md`), but a launch blocker: store masked + HMAC only, or encrypt with a KMS key, before any real data. |
-| 12 | `documentAccessLog` has no retention schedule. | Info | **Open.** Decide retention with the case-retention policy; add to the daily purge when decided. |
+| 12 | `documentAccessLog` had no retention schedule. | Info | **Fixed.** Entries older than 365 days are removed by the daily `purgeExpiredDocuments` run (`ACCESS_LOG_RETENTION_DAYS`). |
 
 ## How to verify locally
 
