@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { onRequest } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
+import { clientAddress } from "../../platform/network";
+import { addressBucket } from "../otp/identity";
 
 export async function reserveGeocodeSlot(now = Date.now(), owner = randomUUID()) {
   const ref = db.collection("mapServiceLimits").doc("nominatim");
@@ -22,10 +24,37 @@ export async function releaseGeocodeSlot(owner: string, now = Date.now()) {
 // are made by the Vercel process or browser.
 // The privacy policy promises place searches are cached for up to a day.
 const CACHE_TTL_MS = 86_400_000;
+// This endpoint is reachable directly, not only through the Vercel proxy, and
+// the upstream slot is shared by everyone: one caller looping over distinct
+// queries would hold it (and fill geocodeCache) for all other reporters.
+// Counted per warm instance, which is coarse, but with maxInstances 5 it still
+// caps any single address well below the ~3,000 slots an hour exists.
+const PER_ADDRESS_WINDOW_MS = 60_000;
+const PER_ADDRESS_MAX = 20;
+const MAX_TRACKED_ADDRESSES = 10_000;
+const recent = new Map<string, { start: number; count: number }>();
+export function overAddressLimit(key: string, now = Date.now(), max = PER_ADDRESS_MAX): boolean {
+  const entry = recent.get(key);
+  if (entry && entry.start > now - PER_ADDRESS_WINDOW_MS) { entry.count += 1; return entry.count > max; }
+  recent.delete(key);
+  recent.set(key, { start: now, count: 1 });
+  // Insertion order is window-start order, so expired windows sit at the front.
+  for (const [k, v] of recent) {
+    if (v.start > now - PER_ADDRESS_WINDOW_MS && recent.size <= MAX_TRACKED_ADDRESSES) break;
+    recent.delete(k);
+  }
+  return false;
+}
+
 // One upstream slot is shared globally, so extra instances only add idle cost.
 export const geocodePlace = onRequest({ invoker: "public", timeoutSeconds: 30, maxInstances: 5 }, async (request, response) => {
   if (request.method !== "GET") { response.set("Allow", "GET").sendStatus(405); return; }
   response.set("Cache-Control", "no-store");
+  const address = clientAddress(request);
+  if (!address) { response.status(400).json({ error: "Enter a place name." }); return; }
+  if (overAddressLimit(addressBucket(address))) {
+    response.set("Retry-After", "60").status(429).json({ error: "Too many place searches. Please wait a minute." }); return;
+  }
   const text = typeof request.query.q === "string" ? request.query.q.trim().replace(/\s+/g, " ") : "";
   if (text.length < 2 || text.length > 120 || /[\u0000-\u001f\u007f]/.test(text)) { response.status(400).json({ error: "Enter a place name." }); return; }
   const key = createHash("sha256").update(text.toLowerCase()).digest("hex");

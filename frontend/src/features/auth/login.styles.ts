@@ -37,18 +37,6 @@ export const submitBtnStyle: React.CSSProperties = {
   transition: "transform 0.15s, box-shadow 0.15s",
 };
 
-export const iconBtnStyle: React.CSSProperties = {
-  minHeight: 44,
-  minWidth: 44,
-  background: "rgba(255, 255, 255, 0.05)",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
-  borderRadius: 6,
-  padding: "0.5rem 0.75rem",
-  color: "rgba(255, 255, 255, 0.85)",
-  fontSize: "0.82rem",
-  cursor: "pointer",
-};
-
 export const secondaryBtnStyle: React.CSSProperties = {
   minHeight: 44,
   background: "rgba(255, 255, 255, 0.08)",
@@ -66,8 +54,3 @@ export const fieldErrorStyle: React.CSSProperties = {
   fontSize: "0.84rem",
 };
 
-export const hintStyle: React.CSSProperties = {
-  margin: "0.4rem 0 0",
-  color: "#94a3b8",
-  fontSize: "0.8rem",
-};

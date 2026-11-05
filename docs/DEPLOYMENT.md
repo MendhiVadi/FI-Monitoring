@@ -1,5 +1,36 @@
 # Production deployment
 
+## Pending release — security review fixes, 2026-11-04
+
+Prepared on branch `claude/practical-fermi-fjlyk6`; not yet deployed. Full findings,
+fixes and open items: `docs/SECURITY_REVIEW.md`. What changes operationally:
+
+- **Quota addresses.** All public callables and `geocodePlace` now take the client
+  address from the trusted end of `X-Forwarded-For` (`platform/network.ts`). Default
+  is one trusted hop (Cloud Run itself). If the functions are ever placed behind an
+  external HTTPS load balancer, set the `TRUSTED_PROXY_HOPS=2` environment variable
+  on the Functions codebase, or quotas will key on the load balancer's address.
+- **Document access log.** `getCaseDocumentFile` writes one `documentAccessLog`
+  record per officer view; the collection is server-only. Deploy `firestore.rules`
+  together with the functions. Entries are deleted after 365 days by the daily purge.
+- **Response headers.** `firebase.json` and `frontend/vercel.json` now send
+  `Content-Security-Policy`, `Strict-Transport-Security` and
+  `Cross-Origin-Opener-Policy`. The policy was verified against the built app for
+  `/`, `/report`, `/login`, `/fra-monitoring` and `/officer-portal` with no violations;
+  after deploying, check the browser console on each route once more with real
+  Firebase traffic. If the map proxy moves off `forest-watch-eight.vercel.app` or
+  functions move off `*.cloudfunctions.net` / `*.run.app`, update `connect-src`.
+- **Dependencies.** `sharp` 0.35.5 and refreshed lockfiles: `npm audit --omit=dev`
+  reports no high or critical advisories for Functions. The four "high" entries npm
+  still reports for the frontend are the Node-only `@grpc/grpc-js` inside the Firebase
+  SDK, which is not part of the browser bundle; the only "fix" npm offers is a
+  downgrade to firebase 9, so they are accepted.
+- **Staff login.** The browser-generated CAPTCHA was removed: it was produced and
+  checked in the same page, so it stopped no one. Brute-force protection remains
+  Firebase Auth's throttling; enable MFA before any pilot with real documents.
+- **Scripts.** Personal phone numbers and the WhatsApp phone-number ID were removed
+  from `functions/scripts`; the scripts now require them as arguments / env vars.
+
 ## Current full-stack release — efficiency/UI overhaul and document screening, 2026-10-26
 
 - Source: branch `efficiency-ui-overhaul` at `9398ca1` (PR MendhiVadi/FI-Monitoring#1,

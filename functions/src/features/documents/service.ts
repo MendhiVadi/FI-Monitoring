@@ -182,13 +182,27 @@ export async function removeCaseDocument(db: admin.firestore.Firestore, store: D
   return { removed: true };
 }
 
-export async function readCaseDocumentFile(db: admin.firestore.Firestore, store: DocumentStore, documentId: string, variant: FileVariant) {
+// Every time staff open an identity document it is recorded: who, which file,
+// which rendering, when. Reviews already leave a case-history event; views did
+// not, so an officer browsing Aadhaar copies left no trace. The log is its own
+// server-only collection rather than a ticket event, so a read never bumps the
+// case revision (which would make another officer's in-progress edit fail) and
+// never shows up as an "update" to the reporter.
+export const ACCESS_LOG = "documentAccessLog";
+export async function readCaseDocumentFile(db: admin.firestore.Firestore, store: DocumentStore, documentId: string, variant: FileVariant,
+  officer?: { uid: string; email: string }) {
   const data = (await collection(db).doc(documentId).get()).data();
   // Pending uploads belong to no case yet, so staff have no reason to open them.
   if (!data || data.status !== "attached") throw new HttpsError("not-found", "Document not found.");
   const path = data.storage?.[variant];
   if (typeof path !== "string" || !path.startsWith(documentPrefix(documentId))) {
     throw new HttpsError("not-found", "This view is not available for this document.");
+  }
+  if (officer) {
+    // Written before the bytes are returned: a read that cannot be logged is
+    // refused, so the log is complete rather than best-effort.
+    await db.collection(ACCESS_LOG).add({ documentId, ticketId: data.ticketId ?? null, kind: data.kind ?? null, variant,
+      officerUid: officer.uid, officerEmail: officer.email || null, at: admin.firestore.FieldValue.serverTimestamp() });
   }
   const bytes = await store.read(path);
   return { contentType: variant === "original" ? String(data.contentType) : VARIANT_TYPES[variant], dataBase64: bytes.toString("base64") };

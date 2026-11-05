@@ -110,13 +110,32 @@ export function validateUploadRequest(data: unknown): UploadRequest {
 }
 const tooLarge = () => "Each file must be " + Math.floor(MAX_FILE_BYTES / MIB) + " MB or smaller.";
 
-// The engine's magic-byte test, kept here so uploads are still type-checked
-// when the engine itself cannot load (see uploadDisputeDocument).
+// The one magic-byte test for uploads; the screening engine re-exports it so
+// the fallback path (engine failed to load) and the engine can never disagree.
+//
+// PDF readers tolerate a little junk before "%PDF-", so a header within the
+// first 1 KiB is accepted — but not when those leading bytes are themselves a
+// recognisable file. A JPEG, ZIP, HTML page or SVG with "%PDF-" tucked inside
+// is a polyglot built to be read one way by the screening and another way by
+// whatever opens it later, and is refused.
+const OTHER_MAGIC = [
+  Buffer.from([0xff, 0xd8, 0xff]), Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.from("RIFF", "latin1"), Buffer.from("GIF8", "latin1"),
+  Buffer.from("PK\x03\x04", "latin1"), Buffer.from("MZ", "latin1"), Buffer.from("\x7fELF", "latin1"), Buffer.from("BM", "latin1"),
+  Buffer.from("II*\0", "latin1"), Buffer.from("MM\0*", "latin1"),
+];
+const MARKUP_PREFIX = /^\s*(?:\ufeff)?</;
 export function sniffDocumentType(bytes: Buffer): string | null {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
   if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
   if (bytes.length >= 12 && bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") return "image/webp";
-  return bytes.subarray(0, 1024).indexOf("%PDF-", 0, "latin1") >= 0 ? "application/pdf" : null;
+  const at = bytes.subarray(0, 1024).indexOf("%PDF-", 0, "latin1");
+  if (at < 0) return null;
+  if (at > 0) {
+    const lead = bytes.subarray(0, at);
+    if (OTHER_MAGIC.some(magic => lead.length >= magic.length && lead.subarray(0, magic.length).equals(magic))) return null;
+    if (MARKUP_PREFIX.test(lead.toString("utf8"))) return null;
+  }
+  return "application/pdf";
 }
 
 // A record binds to the verified phone when there was one, otherwise to the

@@ -4,6 +4,7 @@ import { DISPUTE_OTP_SECRET, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } f
 import { sendWhatsAppTemplate, WhatsAppSendError } from "../whatsapp/client";
 import { normalizePhone, assertIpUnderSendLimit, issueOtp, confirmOtp, recordOtpDelivery, OtpRateLimitError } from "./service";
 import { addressBucket, hashId } from "./identity";
+import { clientAddress } from "../../platform/network";
 
 // Cost ceiling for unauthenticated endpoints: a flood queues or is shed at
 // this many instances instead of scaling the bill without bound.
@@ -28,7 +29,7 @@ export const requestDisputeOtp = onCall(
     // Unauthenticated endpoint that sends a billed WhatsApp message, so it is
     // capped per source address as well as per phone number — otherwise one
     // caller can walk a list of numbers and message-bomb at project cost.
-    const address = request.rawRequest.ip;
+    const address = clientAddress(request.rawRequest);
     if (!address) throw new HttpsError("unavailable", "Please try again later.");
     try {
       await assertIpUnderSendLimit(db, hashId(addressBucket(address)));

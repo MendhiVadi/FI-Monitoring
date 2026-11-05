@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "../../platform/firebase";
 import { DISPUTE_OTP_SECRET } from "../../platform/secrets";
+import { clientAddress } from "../../platform/network";
 import { normalizePhone } from "../otp/service";
 import { otpRequired } from "../disputes/params";
 import { requireOfficer } from "../tickets/authorization";
@@ -30,7 +31,7 @@ async function screeningDeps() {
 function invalid(err: unknown, fallback: string): never {
   throw new HttpsError("invalid-argument", err instanceof DocumentInputError || err instanceof Error ? err.message : fallback);
 }
-function reporterProof(data: Record<string, unknown> | undefined, address: string | undefined): ReporterProof {
+function reporterProof(data: Record<string, unknown> | undefined, address: string | null): ReporterProof {
   if (!address) throw new HttpsError("unavailable", "Please try again later.");
   let phone = "";
   try { if (data?.phone) phone = normalizePhone(data.phone); } catch (err) { invalid(err, "Invalid phone number."); }
@@ -54,7 +55,7 @@ export const uploadDisputeDocument = onCall({ invoker: "public", maxInstances: 5
   secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   let upload;
   try { upload = validateUploadRequest(request.data); } catch (err) { invalid(err, "Invalid document."); }
-  const proof = reporterProof(request.data, request.rawRequest.ip);
+  const proof = reporterProof(request.data, clientAddress(request.rawRequest));
   try {
     return await uploadCaseDocument(db, await screeningDeps(), upload, proof);
   } catch (err) {
@@ -66,7 +67,7 @@ export const removeDisputeDocument = onCall({ invoker: "public", maxInstances: 1
   secrets: [DISPUTE_OTP_SECRET] }, async (request) => {
   const submissionId = request.data?.submissionId, documentId = request.data?.documentId;
   if (!validSubmissionId(submissionId) || !validDocumentId(documentId)) throw new HttpsError("invalid-argument", "A valid document reference is required.");
-  const proof = reporterProof(request.data, request.rawRequest.ip);
+  const proof = reporterProof(request.data, clientAddress(request.rawRequest));
   try {
     return await removeCaseDocument(db, firebaseStore, { submissionId, documentId }, proof);
   } catch (err) {
@@ -75,11 +76,11 @@ export const removeDisputeDocument = onCall({ invoker: "public", maxInstances: 1
 });
 
 export const getCaseDocumentFile = onCall({ invoker: "public", maxInstances: 10, memory: "512MiB", timeoutSeconds: 60 }, async (request) => {
-  await requireOfficer(request.auth);
+  const officer = await requireOfficer(request.auth);
   let target;
   try { target = validateFileRequest(request.data); } catch (err) { invalid(err, "Invalid document reference."); }
   try {
-    return await readCaseDocumentFile(db, firebaseStore, target.documentId, target.variant);
+    return await readCaseDocumentFile(db, firebaseStore, target.documentId, target.variant, officer);
   } catch (err) {
     if (err instanceof HttpsError) throw err;
     console.error("Document file read failed", { code: (err as { code?: unknown })?.code ?? "unknown" });

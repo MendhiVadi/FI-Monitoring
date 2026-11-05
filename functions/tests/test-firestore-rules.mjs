@@ -81,6 +81,7 @@ test("server-only collections are closed to every client", async () => {
     "reporterLimits/phone-abc",
     "reporters/phone-abc",
     "whatsappDeliveries/event-abc",
+    "documentAccessLog/entry-abc",
     "disputeVerifications/grant", "submissionReceipts/receipt", "notificationPreferences/preference", "geocodeCache/query", "mapServiceLimits/nominatim",
     "documentUploadLimits/ip-abc", "documentPurges/d1",
   ]) {
